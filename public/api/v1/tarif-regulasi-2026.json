@@ -1,0 +1,251 @@
+{
+  "version": "REG-PBJ-2026.04",
+  "lastUpdated": "2026-11-20T08:30:00+07:00",
+  "sourceAuthority": "Disinfolahtaau · Pedoman HPS LKPP & SBM Kemenkeu TA 2026",
+  "defaultPpnPercent": 11,
+  "recommendedOverheadRange": [10, 15],
+  "regulations": [
+    {
+      "id": "reg-perpres-12-2021",
+      "code": "Perpres No. 12 Tahun 2021",
+      "title": "Perubahan atas Perpres No. 16 Tahun 2018 tentang Pengadaan Barang/Jasa Pemerintah",
+      "issuer": "Pemerintah Republik Indonesia",
+      "year": 2021,
+      "category": "Perpres",
+      "summary": "Pasal 26 & 66 mengatur penyusunan Harga Perkiraan Sendiri (HPS) yang memperhitungkan biaya langsung personel (remunerasi), biaya langsung non-personel, keuntungan dan biaya overhead yang wajar, serta PPN.",
+      "active": true
+    },
+    {
+      "id": "reg-lkpp-12-2021",
+      "code": "Perlem LKPP No. 12 Tahun 2021",
+      "title": "Pedoman Pelaksanaan Pengadaan Barang/Jasa Pemerintah Melalui Penyedia",
+      "issuer": "Lembaga Kebijakan Pengadaan Barang/Jasa Pemerintah (LKPP)",
+      "year": 2021,
+      "category": "LKPP",
+      "summary": "Standar perhitungan Kertas Kerja HPS Jasa Konsultansi / Pengembangan Sistem Informasi berdasarkan pendekatan Man-Month (Orang-Bulan / OB) dan analisis pasar.",
+      "active": true
+    },
+    {
+      "id": "reg-pmk-sbm-2026",
+      "code": "PMK No. 39 Tahun 2025 / SBM TA 2026",
+      "title": "Standar Biaya Masukan (SBM) Tahun Anggaran 2026",
+      "issuer": "Kementerian Keuangan RI",
+      "year": 2026,
+      "category": "SBM Kemenkeu",
+      "summary": "Acuan batas tertinggi dan estimasi satuan biaya honorarium tenaga ahli, lisensi perangkat lunak, komputasi awan (cloud), dan penyelenggaraan dokumentasi/pelatihan.",
+      "active": true
+    },
+    {
+      "id": "reg-inkindo-2026",
+      "code": "Pedoman Billing Rate INKINDO 2026",
+      "title": "Standar Remunerasi Minimal Tenaga Ahli Konsultansi Nasional & Spesialis TI",
+      "issuer": "Ikatan Nasional Konsultan Indonesia (INKINDO)",
+      "year": 2026,
+      "category": "Standar Industri",
+      "summary": "Rujukan tarif remunerasi tenaga ahli teknologi informasi (S1/S2 bersertifikat) berdasarkan kualifikasi pengalaman kerja (Junior 1-3 thn, Middle 4-6 thn, Senior 7-10 thn, Lead >10 thn).",
+      "active": true
+    },
+    {
+      "id": "reg-uu-hpp-ppn",
+      "code": "UU No. 7 Tahun 2021 & PMK No. 131/2024",
+      "title": "Harmonisasi Peraturan Perpajakan (HPP) & Penyesuaian DPP PPN Efektif",
+      "issuer": "Direktorat Jenderal Pajak Kemenkeu RI",
+      "year": 2025,
+      "category": "Perpajakan",
+      "summary": "Tarif PPN efektif 11% (melalui skema DPP Nilai Lain 11/12 dari 12% untuk barang/jasa non-mewah) atau opsi penyesuaian 12% sesuai ketentuan faktur pajak instansi pemerintah (WAPU).",
+      "active": true
+    }
+  ],
+  "roleTariffs": [
+    {
+      "id": "role-pm",
+      "code": "TA-01",
+      "roleName": "Project Manager / Team Leader",
+      "category": "Management & Analysis",
+      "rates": {
+        "Junior": 18500000,
+        "Middle": 24500000,
+        "Senior": 31000000,
+        "Lead / Principal": 38500000
+      },
+      "standardReference": "INKINDO S1/S2 Ahli Madya-Utama · PMP/PRINCE2",
+      "description": "Manajemen tata kelola proyek, koordinasi Satker TNI AU, pengendalian jadwal, risiko, dan kepatuhan KAK/Kontrak."
+    },
+    {
+      "id": "role-sa",
+      "code": "TA-02",
+      "roleName": "System Analyst / Solution Architect",
+      "category": "Management & Analysis",
+      "rates": {
+        "Junior": 16000000,
+        "Middle": 21500000,
+        "Senior": 27500000,
+        "Lead / Principal": 34000000
+      },
+      "standardReference": "INKINDO S1 TI · SKKNI System Analyst",
+      "description": "Perancangan arsitektur perangkat lunak, pemodelan proses bisnis, desain skema basis data, dan spesifikasi SRS/SDD."
+    },
+    {
+      "id": "role-uiux",
+      "code": "TA-03",
+      "roleName": "UI/UX Designer (Tactical Interface)",
+      "category": "Management & Analysis",
+      "rates": {
+        "Junior": 13500000,
+        "Middle": 17500000,
+        "Senior": 22000000,
+        "Lead / Principal": 26500000
+      },
+      "standardReference": "Standar Industri TI & SKKNI Desainer Antarmuka",
+      "description": "Desain antarmuka operasional, prototipe interaktif, sistem desain (design system), dan uji kegunaan operator."
+    },
+    {
+      "id": "role-backend",
+      "code": "TA-04",
+      "roleName": "Backend Developer",
+      "category": "Engineering & Development",
+      "rates": {
+        "Junior": 15500000,
+        "Middle": 20500000,
+        "Senior": 26000000,
+        "Lead / Principal": 32000000
+      },
+      "standardReference": "INKINDO & SKKNI Pemrograman Berbasis Layanan",
+      "description": "Pengembangan layanan mikro (microservices), REST/gRPC API, manajemen transaksi database, dan keamanan otentikasi."
+    },
+    {
+      "id": "role-frontend",
+      "code": "TA-05",
+      "roleName": "Frontend Developer",
+      "category": "Engineering & Development",
+      "rates": {
+        "Junior": 14500000,
+        "Middle": 19500000,
+        "Senior": 24500000,
+        "Lead / Principal": 29500000
+      },
+      "standardReference": "INKINDO & SKKNI Web Application Developer",
+      "description": "Implementasi dashboard aplikasi web responsif, visualisasi data taktis real-time, dan optimasi performa klien."
+    },
+    {
+      "id": "role-mobile",
+      "code": "TA-06",
+      "roleName": "Mobile Developer (Android / iOS)",
+      "category": "Engineering & Development",
+      "rates": {
+        "Junior": 15000000,
+        "Middle": 20000000,
+        "Senior": 25000000,
+        "Lead / Principal": 30500000
+      },
+      "standardReference": "INKINDO & SKKNI Mobile Computing",
+      "description": "Pengembangan aplikasi mobile lapangan terenkripsi, sinkronisasi data offline-first, dan telemetri perangkat."
+    },
+    {
+      "id": "role-ai-data",
+      "code": "TA-07",
+      "roleName": "AI / Data Engineer",
+      "category": "Data, AI & Security",
+      "rates": {
+        "Junior": 17500000,
+        "Middle": 23500000,
+        "Senior": 30000000,
+        "Lead / Principal": 37500000
+      },
+      "standardReference": "INKINDO Spesialis Data & Kecerdasan Artifisial",
+      "description": "Rekayasa pipeline data, analitik prediktif, pemrosesan sinyal/citra, dan integrasi model analitik cerdas."
+    },
+    {
+      "id": "role-qa-sec",
+      "code": "TA-08",
+      "roleName": "QA & Security Tester (AppSec)",
+      "category": "Data, AI & Security",
+      "rates": {
+        "Junior": 14500000,
+        "Middle": 19000000,
+        "Senior": 24500000,
+        "Lead / Principal": 30000000
+      },
+      "standardReference": "SKKNI Pengujian Perangkat Lunak & BSSN CSIRT",
+      "description": "Pengujian fungsional otomatis, uji beban (stress testing), analisis kerentanan (VA), dan kepatuhan standar keamanan."
+    },
+    {
+      "id": "role-devops",
+      "code": "TA-09",
+      "roleName": "DevOps & Cloud Infrastructure Engineer",
+      "category": "Data, AI & Security",
+      "rates": {
+        "Junior": 16000000,
+        "Middle": 21500000,
+        "Senior": 27000000,
+        "Lead / Principal": 33000000
+      },
+      "standardReference": "SKKNI Cloud Computing & DevSecOps",
+      "description": "Otomasi CI/CD pipeline, orkestrasi container (Kubernetes), hardening server on-premise/cloud, dan disaster recovery."
+    },
+    {
+      "id": "role-tw",
+      "code": "TA-10",
+      "roleName": "Technical Writer & Trainer",
+      "category": "Quality & Documentation",
+      "rates": {
+        "Junior": 10500000,
+        "Middle": 13500000,
+        "Senior": 17000000,
+        "Lead / Principal": 21000000
+      },
+      "standardReference": "SBM Kemenkeu & SKKNI Dokumentasi Sistem",
+      "description": "Penyusunan dokumen SRS, SDD, UAT Script, Buku Pedoman Operator (BPO), dan modul transfer pengetahuan."
+    }
+  ],
+  "nonPersonnelStandards": [
+    {
+      "id": "np-std-cloud",
+      "category": "Server / Cloud",
+      "name": "Dedicated Cloud / VPS Cluster Staging & Produksi (Tier Militer Terisolasi)",
+      "unit": "Bulan",
+      "defaultUnitPrice": 8500000,
+      "referenceNote": "E-Katalog Cloud Pemerintah / PDN Standar Komputasi Terdedikasi"
+    },
+    {
+      "id": "np-std-lic",
+      "category": "Lisensi",
+      "name": "Lisensi Enterprise Database, Map Engine & Komponen Keamanan Kriptografi",
+      "unit": "Paket / Tahun",
+      "defaultUnitPrice": 28000000,
+      "referenceNote": "Harga Pasar Resmi Distributor / E-Katalog Perangkat Lunak"
+    },
+    {
+      "id": "np-std-api",
+      "category": "Integrasi API",
+      "name": "Gateway Integrasi API Antar-Satker & Middleware Sinkronisasi Data",
+      "unit": "Paket",
+      "defaultUnitPrice": 18500000,
+      "referenceNote": "Standar Integrasi Sistem Pemerintahan Berbasis Elektronik (SPBE)"
+    },
+    {
+      "id": "np-std-pentest",
+      "category": "Security Testing",
+      "name": "Penetration Testing Independen & Sertifikasi Kelaikan Siber (ITSec / BSSN)",
+      "unit": "Paket",
+      "defaultUnitPrice": 35000000,
+      "referenceNote": "Standar Uji Keamanan Aplikasi Kritis Pertahanan"
+    },
+    {
+      "id": "np-std-doc",
+      "category": "Dokumentasi",
+      "name": "Cetak Dokumen KAK/SRS/SDD/BPO, Sosialisasi & Workshop Transfer Teknologi",
+      "unit": "Kegiatan",
+      "defaultUnitPrice": 16500000,
+      "referenceNote": "SBM Kemenkeu TA 2026 — Paket Rapat & Dokumentasi Teknis"
+    },
+    {
+      "id": "np-std-sla",
+      "category": "SLA & Pemeliharaan",
+      "name": "Dukungan Garansi Pemeliharaan, Patch Keamanan & Helpdesk SLA 99.9% (12 Bulan)",
+      "unit": "Paket / Tahun",
+      "defaultUnitPrice": 24000000,
+      "referenceNote": "Standar Layanan Purna Jual & Pemeliharaan Sistem"
+    }
+  ]
+}

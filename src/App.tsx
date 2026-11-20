@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   Award,
@@ -44,6 +44,8 @@ import {
   PROJECT_PRESET_TEMPLATES,
 } from './data/defaultRegulations';
 import {
+  AuditAdjustmentAction,
+  AuditReportResult,
   FinancialParameters,
   NonPersonnelCostItem,
   PersonnelAllocationItem,
@@ -52,6 +54,10 @@ import {
   SavedSimulation,
   SyncStatus,
 } from './types/aura';
+import {
+  applyAuditAdjustmentsToState,
+  runDeterministicAudit,
+} from './utils/auditEngine';
 import {
   calculateProjectSummary,
   formatIDR,
@@ -64,6 +70,8 @@ type ActiveTab = 'calculator' | 'worksheet' | 'regulations' | 'history';
 
 export const LOGO_TNI_AU_URL = '/assets/aistudio/1792503945296_954409ac.jpg';
 export const LOGO_PETIR_URL = '/assets/aistudio/1794962413180_09546ffa.png';
+
+const AUTO_SYNC_INTERVAL_MS = 5 * 60 * 1000; // Scheduled auto-sync every 5 minutes
 
 const STORAGE_KEYS = {
   REGULATION_CONFIG: 'aura_regulation_config_v1',
@@ -166,7 +174,11 @@ export default function App() {
   });
 
   const [endpointUrl, setEndpointUrl] = useState<string>(() => {
-    return localStorage.getItem(STORAGE_KEYS.REMOTE_ENDPOINT) || DEFAULT_REMOTE_ENDPOINT;
+    const saved = localStorage.getItem(STORAGE_KEYS.REMOTE_ENDPOINT);
+    if (!saved || saved.includes('aura-config.tni-au.mil.id')) {
+      return DEFAULT_REMOTE_ENDPOINT;
+    }
+    return saved;
   });
 
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(() => {
@@ -189,6 +201,28 @@ export default function App() {
   const [financials, setFinancials] = useState<FinancialParameters>(
     INITIAL_FINANCIAL_PARAMETERS
   );
+
+  // AI Audit Override State (reset whenever project inputs change so numbers are never stale)
+  const [aiAuditOverride, setAiAuditOverride] = useState<AuditReportResult | null>(null);
+
+  // Clear AI narrative override whenever underlying calculation inputs change
+  useEffect(() => {
+    setAiAuditOverride(null);
+  }, [profile, personnelItems, nonPersonnelItems, financials, regulationConfig]);
+
+  // Live Deterministic Audit Baseline
+  const activeAuditReport = useMemo<AuditReportResult>(() => {
+    if (aiAuditOverride) {
+      return aiAuditOverride;
+    }
+    return runDeterministicAudit(
+      profile,
+      personnelItems,
+      nonPersonnelItems,
+      financials,
+      regulationConfig
+    );
+  }, [aiAuditOverride, profile, personnelItems, nonPersonnelItems, financials, regulationConfig]);
 
   // Saved Simulations History
   const [savedSimulations, setSavedSimulations] = useState<SavedSimulation[]>(() => {
@@ -235,7 +269,10 @@ export default function App() {
           Array.isArray(parsed.personnelItems) &&
           Array.isArray(parsed.nonPersonnelItems)
         ) {
-          setProfile(parsed.profile);
+          setProfile({
+            ...INITIAL_PROJECT_PROFILE,
+            ...parsed.profile,
+          });
           setPersonnelItems(parsed.personnelItems);
           setNonPersonnelItems(parsed.nonPersonnelItems);
           if (parsed.financials) setFinancials(parsed.financials);
@@ -258,35 +295,92 @@ export default function App() {
     }
   }, [profile, personnelItems, nonPersonnelItems, financials]);
 
-  // Automatic initial tariff verification & offline fallback check on mount
-  useEffect(() => {
-    let isMounted = true;
-    const performInitialAutoSync = async () => {
-      try {
-        const check = validateRegulationPayload(regulationConfig);
-        if (!check.valid) {
-          setRegulationConfig(DEFAULT_REGULATION_CONFIG);
-          setSyncStatus('OFFLINE CACHE');
-          return;
-        }
-        const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
-        if (!isOnline) {
-          if (isMounted) setSyncStatus('OFFLINE CACHE');
-          return;
-        }
-        localStorage.setItem(
-          STORAGE_KEYS.REGULATION_CONFIG,
-          JSON.stringify(regulationConfig)
-        );
-      } catch {
-        if (isMounted) setSyncStatus('OFFLINE CACHE');
+  // Background Auto-Sync Function (runs on mount, on periodic schedule, and on network recovery)
+  const executeBackgroundRegulationSync = useCallback(
+    async (silent = true) => {
+      if (syncStatus === 'CUSTOM OVERRIDE' && silent) {
+        return;
       }
+
+      const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      if (!isOnline) {
+        setSyncStatus('OFFLINE CACHE');
+        localStorage.setItem(STORAGE_KEYS.SYNC_STATUS, 'OFFLINE CACHE');
+        return;
+      }
+
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3500);
+        const response = await fetch(endpointUrl, {
+          signal: controller.signal,
+          headers: { Accept: 'application/json' },
+        });
+        clearTimeout(timeout);
+
+        if (response.ok) {
+          const data = await response.json();
+          const check = validateRegulationPayload(data);
+          if (check.valid && check.payload) {
+            const freshPayload: RegulationConfigPayload = {
+              ...check.payload,
+              lastUpdated: new Date().toISOString(),
+            };
+            setRegulationConfig(freshPayload);
+            setSyncStatus('SYNCED');
+            localStorage.setItem(
+              STORAGE_KEYS.REGULATION_CONFIG,
+              JSON.stringify(freshPayload)
+            );
+            localStorage.setItem(STORAGE_KEYS.SYNC_STATUS, 'SYNCED');
+            return;
+          }
+        }
+      } catch {
+        // Fallback to localStorage / built-in seed data
+      }
+
+      // Verify current local cache is valid
+      setRegulationConfig((prev) => {
+        const check = validateRegulationPayload(prev);
+        if (check.valid && check.payload) {
+          localStorage.setItem(
+            STORAGE_KEYS.REGULATION_CONFIG,
+            JSON.stringify(check.payload)
+          );
+          return check.payload;
+        }
+        return DEFAULT_REGULATION_CONFIG;
+      });
+    },
+    [endpointUrl, syncStatus]
+  );
+
+  // On-Load + Scheduled Periodic Auto-Sync + Online/Offline Event Listeners
+  useEffect(() => {
+    executeBackgroundRegulationSync(true);
+
+    const intervalId = window.setInterval(() => {
+      executeBackgroundRegulationSync(true);
+    }, AUTO_SYNC_INTERVAL_MS);
+
+    const handleOnline = () => {
+      executeBackgroundRegulationSync(true);
     };
-    performInitialAutoSync();
+    const handleOffline = () => {
+      setSyncStatus('OFFLINE CACHE');
+      localStorage.setItem(STORAGE_KEYS.SYNC_STATUS, 'OFFLINE CACHE');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
     return () => {
-      isMounted = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [executeBackgroundRegulationSync]);
 
   // Live HPS / RAB Calculation Summary
   const summary = useMemo(() => {
@@ -345,6 +439,24 @@ export default function App() {
     setTimeout(() => setSyncNotice(null), 4000);
   };
 
+  const handleApplyAuditAdjustments = (adjustments: AuditAdjustmentAction[]) => {
+    const nextState = applyAuditAdjustmentsToState(
+      profile,
+      personnelItems,
+      nonPersonnelItems,
+      financials,
+      adjustments
+    );
+    setPersonnelItems(nextState.personnelItems);
+    setNonPersonnelItems(nextState.nonPersonnelItems);
+    setFinancials(nextState.financials);
+    setAiAuditOverride(null);
+    setSyncNotice(
+      `Berhasil menerapkan ${adjustments.length} saran koreksi terukur ke Kertas Kerja HPS/RAB.`
+    );
+    setTimeout(() => setSyncNotice(null), 4000);
+  };
+
   const handleSaveEndpointUrl = (url: string) => {
     setEndpointUrl(url);
     localStorage.setItem(STORAGE_KEYS.REMOTE_ENDPOINT, url);
@@ -370,7 +482,10 @@ export default function App() {
   };
 
   const handleLoadSimulation = (sim: SavedSimulation) => {
-    setProfile({ ...sim.profile });
+    setProfile({
+      ...INITIAL_PROJECT_PROFILE,
+      ...sim.profile,
+    });
     setPersonnelItems(sim.personnelItems.map((i) => ({ ...i })));
     setNonPersonnelItems(sim.nonPersonnelItems.map((i) => ({ ...i })));
     setFinancials({ ...sim.financials });
@@ -444,9 +559,9 @@ export default function App() {
 
   return (
     <div className="min-h-dvh w-full flex flex-col bg-[#040812] text-slate-100 overflow-x-hidden">
-      {/* TOP BAR CONTRACT: Duplicate logos removed from header as requested */}
+      {/* TOP BAR CONTRACT: 3 zones separated by gap-8 */}
       <header className="flex items-center justify-between gap-4 sm:gap-8 px-3 sm:px-6 lg:px-8 py-3 bg-[#060f20]/95 border-b border-amber-500/30 shadow-lg no-print">
-        {/* Zone 1: Brand Wordmark + Small White Subtitle (no duplicate logo in header) */}
+        {/* Zone 1: Brand Wordmark + Small White Subtitle */}
         <a
           href="#top"
           onClick={(e) => {
@@ -490,7 +605,7 @@ export default function App() {
           })}
         </nav>
 
-        {/* Zone 3: Primary Action (no duplicate logo in header) */}
+        {/* Zone 3: 1 Primary Action */}
         <div className="flex items-center shrink-0">
           <button
             type="button"
@@ -501,7 +616,7 @@ export default function App() {
             className="flex items-center gap-2 px-3 sm:px-4 py-2 text-xs font-semibold bg-gradient-to-r from-cyan-500 to-sky-400 hover:from-cyan-400 hover:to-sky-300 text-slate-950 shadow-[0_0_15px_rgba(0,212,255,0.3)] transition-all whitespace-nowrap shrink-0"
           >
             <RefreshCw className="w-3.5 h-3.5" />
-            <span>Sync Tarif Sekarang</span>
+            <span>SYNC REGULASI RESMI SEKARANG</span>
           </button>
         </div>
       </header>
@@ -528,7 +643,7 @@ export default function App() {
         })}
       </div>
 
-      {/* MAIN FLUID FULLSCREEN TACTICAL HUD WORKSPACE (Fits Android, iPhone, Tablet, Desktop) */}
+      {/* MAIN FLUID FULLSCREEN TACTICAL HUD WORKSPACE */}
       <main className="flex-1 w-full max-w-[1920px] mx-auto px-2.5 sm:px-5 lg:px-8 py-4 sm:py-6 space-y-5 sm:space-y-6">
         {/* ELEGANT MILITARY COMMAND CREST BANNER WITH TOP-LEFT TNI AU LOGO & TOP-RIGHT PETIR LOGO */}
         <section className="hud-command-crest p-4 sm:p-6 lg:p-7 relative overflow-hidden">
@@ -617,7 +732,7 @@ export default function App() {
               </h1>
 
               <p className="text-xs sm:text-sm text-slate-300 max-w-3xl lg:mx-auto">
-                Kalkulator Taktis &amp; Kertas Kerja Harga Perkiraan Sendiri (HPS) / Rencana Anggaran Biaya (RAB) Pengadaan Sistem Informasi Berbasis Standar Biaya Pemerintah
+                Kalkulator Taktis, Sistem Audit Kepatuhan AI &amp; Kertas Kerja HPS/RAB Pengadaan Sistem Informasi Berbasis Basis Data Regulasi Resmi Pemerintah
               </p>
 
               {/* Unboxed Tactical Telemetry Readout Strip */}
@@ -631,34 +746,27 @@ export default function App() {
                       : 'text-cyan-300 font-semibold'
                   }
                 >
-                  TELEMETRI: {syncStatus}
+                  TELEMETRI: {syncStatus} (AUTO-SYNC 5M)
                 </span>
                 <span aria-hidden="true" className="text-slate-600">
                   /
                 </span>
                 <span className="text-amber-300">
-                  REGULASI: {regulationConfig.version}
+                  VERSI: {regulationConfig.version}
                 </span>
                 <span aria-hidden="true" className="text-slate-600">
                   /
                 </span>
-                <span>DIPERBARUI: {formatTimestampID(regulationConfig.lastUpdated)}</span>
+                <span className="text-cyan-200">
+                  RUJUKAN: {regulationConfig.sourceAuthority}
+                </span>
                 <span aria-hidden="true" className="text-slate-600">
                   /
                 </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAutoTriggerRadar(false);
-                    setIsRadarModalOpen(true);
-                  }}
-                  className="text-cyan-300 hover:text-amber-300 underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
-                >
-                  Konfigurasi Endpoint
-                </button>
+                <span>UPDATE: {formatTimestampID(regulationConfig.lastUpdated)}</span>
               </div>
 
-              {/* Quick Utility Strip: Barcode, Share Link, Fullscreen Mode */}
+              {/* Quick Utility Strip: Barcode, Share Link, Fullscreen Mode, Endpoint Config */}
               <div className="pt-2 flex flex-wrap items-center lg:justify-center gap-2 no-print">
                 <button
                   type="button"
@@ -703,6 +811,17 @@ export default function App() {
                       <span>Layar Penuh (Fullscreen)</span>
                     </>
                   )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAutoTriggerRadar(false);
+                    setIsRadarModalOpen(true);
+                  }}
+                  className="px-3 py-1.5 text-xs font-mono text-cyan-300 hover:text-amber-300 bg-[#081326] border border-cyan-500/30 transition-colors whitespace-nowrap shrink-0"
+                >
+                  Pengaturan Endpoint JSON
                 </button>
               </div>
             </div>
@@ -830,27 +949,30 @@ export default function App() {
             </div>
           </div>
 
-          {/* KPI 4: Kekuatan Peran, Overhead & Durasi Operasi */}
+          {/* KPI 4: Kekuatan Peran, Status Audit & Kompleksitas */}
           <div className="hud-panel p-4 sm:p-5 flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between text-[11px] font-mono text-amber-300">
-                <span>04 · KEKUATAN TIM &amp; OVERHEAD</span>
+                <span>04 · TIM &amp; SKOR KOMPLEKSITAS</span>
                 <Compass className="w-4 h-4 text-amber-400 shrink-0" />
               </div>
               <div className="text-xl sm:text-2xl font-mono font-bold text-white mt-2">
-                {summary.totalPersonnelHeadcount} Ahli · {summary.activeRolesCount} Peran
+                {summary.totalPersonnelHeadcount} Ahli · Skor{' '}
+                {activeAuditReport.technicalComplexityAssessment.complexityScore}
               </div>
             </div>
             <div className="mt-3.5 space-y-2">
               <div className="w-full h-1.5 bg-slate-900 overflow-hidden">
                 <div
                   className="bg-amber-400 h-full"
-                  style={{ width: `${costShares.overheadShare + costShares.ppnShare}%` }}
+                  style={{
+                    width: `${activeAuditReport.technicalComplexityAssessment.complexityScore}%`,
+                  }}
                 />
               </div>
               <div className="flex items-center justify-between text-[11px] font-mono text-slate-300">
-                <span>Overhead {financials.overheadAndProfitPercent}%</span>
-                <span>Durasi {profile.durationMonths} Bln</span>
+                <span className="truncate">{activeAuditReport.status}</span>
+                <span className="shrink-0">{profile.durationMonths} Bln</span>
               </div>
             </div>
           </div>
@@ -975,6 +1097,9 @@ export default function App() {
             onChangeFinancials={setFinancials}
             regulationConfig={regulationConfig}
             summary={summary}
+            auditReport={activeAuditReport}
+            onUpdateAuditReport={setAiAuditOverride}
+            onApplyAuditAdjustments={handleApplyAuditAdjustments}
             onSaveSimulation={handleSaveCurrentSimulation}
             onGoToWorksheet={() => setActiveTab('worksheet')}
             onApplyPreset={handleApplyPreset}
@@ -988,11 +1113,18 @@ export default function App() {
             nonPersonnelItems={nonPersonnelItems}
             financials={financials}
             summary={summary}
+            regulationConfig={regulationConfig}
             regulationVersion={regulationConfig.version}
             lastUpdated={regulationConfig.lastUpdated}
+            auditReport={activeAuditReport}
+            onUpdateAuditReport={setAiAuditOverride}
+            onApplyAuditAdjustments={handleApplyAuditAdjustments}
             onSaveSimulation={handleSaveCurrentSimulation}
             onImportProjectData={(imported) => {
-              setProfile(imported.profile);
+              setProfile({
+                ...INITIAL_PROJECT_PROFILE,
+                ...imported.profile,
+              });
               setPersonnelItems(imported.personnelItems);
               setNonPersonnelItems(imported.nonPersonnelItems);
               setFinancials(imported.financials);

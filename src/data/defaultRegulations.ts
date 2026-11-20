@@ -6,11 +6,32 @@ import {
   RegulationConfigPayload,
 } from '../types/aura';
 
-export const DEFAULT_REMOTE_ENDPOINT = 'https://aura-config.tni-au.mil.id/api/v1/tarif-regulasi-2026.json';
+export const DEFAULT_REMOTE_ENDPOINT = '/api/v1/tarif-regulasi-2026.json';
+
+export const HIGH_COMPLEXITY_MODULE_OPTIONS = [
+  'Pemrosesan Data & Telemetri Real-Time (Radar / Avionik / Sensor)',
+  'Algoritma Kecerdasan Artifisial (AI / Machine Learning / Analitik Prediktif)',
+  'Arsitektur Terdistribusi High-Availability & Multi-Node Cluster',
+  'Sistem Komando & Kendali Taktis (C4ISR / GIS Spasial Militer)',
+];
+
+export const SPECIAL_INTEGRATION_OPTIONS = [
+  'Antarmuka Data Eksternal & Gateway Lintas Satker (SPBE / SOA)',
+  'Protokol Komunikasi Taktis / Militer Khusus & Middleware Enkripsi',
+  'Sinkronisasi Multi-Pangkalan (Lanud) Offline-First & Replikasi Data',
+  'Migrasi & Normalisasi Basis Data Legacy Skala Besar',
+];
+
+export const LAYERED_SECURITY_STANDARD_OPTIONS = [
+  'Enkripsi End-to-End & Modul Kriptografi (TLS 1.3 / AES-256 / HSM)',
+  'Autentikasi Multi-Faktor (MFA), RBAC Militer & Tanda Tangan Elektronik (TTE BSrE)',
+  'Audit Trail Imutabel, SIEM Telemetry & Deteksi Anomali Intrusi',
+  'Hardening Infrastruktur, Penetration Testing Independen & Kepatuhan BSSN/ITSec',
+];
 
 export const DEFAULT_REGULATION_CONFIG: RegulationConfigPayload = {
   version: 'REG-PBJ-2026.04',
-  lastUpdated: '2026-11-15T08:30:00+07:00',
+  lastUpdated: '2026-11-20T08:30:00+07:00',
   sourceAuthority: 'Disinfolahtaau · Pedoman HPS LKPP & SBM Kemenkeu TA 2026',
   defaultPpnPercent: 11,
   recommendedOverheadRange: [10, 15],
@@ -79,7 +100,7 @@ export const DEFAULT_REGULATION_CONFIG: RegulationConfigPayload = {
         'Lead / Principal': 38500000,
       },
       standardReference: 'INKINDO S1/S2 Ahli Madya-Utama · PMP/PRINCE2',
-      description: 'Manajemen tata kelola proyek, koordinasi Satker TNI AU, pengendalian jadwal, risiko, dan kepatuhan KAK/ Kontrak.',
+      description: 'Manajemen tata kelola proyek, koordinasi Satker TNI AU, pengendalian jadwal, risiko, dan kepatuhan KAK/Kontrak.',
     },
     {
       id: 'role-sa',
@@ -261,7 +282,7 @@ export const DEFAULT_REGULATION_CONFIG: RegulationConfigPayload = {
 };
 
 export const INITIAL_PROJECT_PROFILE: ProjectProfile = {
-  projectName: 'Sistem Informasi kesiapan Alutsista & Logistik Skuadron (SIKAL-AU)',
+  projectName: 'Sistem Informasi Kesiapan Alutsista & Logistik Skuadron (SIKAL-AU)',
   proposingUnit: 'Disinfolahtaau — Subdis Sistem Informasi Operasi & Logistik',
   fiscalYear: 'TA 2026',
   procurementScheme: 'Tender / Seleksi Jasa Konsultansi Badan Usaha',
@@ -269,6 +290,19 @@ export const INITIAL_PROJECT_PROFILE: ProjectProfile = {
   durationMonths: 6,
   locationFactor: 1.0,
   notes: 'Pengembangan aplikasi dashboard kesiapan pemeliharaan pesawat, telemetri suku cadang kritis, dan pelaporan komando terpusat.',
+  highComplexityModules: [
+    'Pemrosesan Data & Telemetri Real-Time (Radar / Avionik / Sensor)',
+    'Sistem Komando & Kendali Taktis (C4ISR / GIS Spasial Militer)',
+  ],
+  specialIntegrations: [
+    'Antarmuka Data Eksternal & Gateway Lintas Satker (SPBE / SOA)',
+    'Sinkronisasi Multi-Pangkalan (Lanud) Offline-First & Replikasi Data',
+  ],
+  layeredSecurityStandards: [
+    'Enkripsi End-to-End & Modul Kriptografi (TLS 1.3 / AES-256 / HSM)',
+    'Autentikasi Multi-Faktor (MFA), RBAC Militer & Tanda Tangan Elektronik (TTE BSrE)',
+    'Hardening Infrastruktur, Penetration Testing Independen & Kepatuhan BSSN/ITSec',
+  ],
 };
 
 export const INITIAL_PERSONNEL_ITEMS: PersonnelAllocationItem[] = [
@@ -447,6 +481,22 @@ export const PROJECT_PRESET_TEMPLATES: ProjectPresetTemplate[] = [
       durationMonths: 8,
       locationFactor: 1.0,
       notes: 'Pengembangan pusat komando deteksi anomali jaringan pertahanan udara, korelasi log real-time dengan AI, dan respons insiden otomatis.',
+      highComplexityModules: [
+        'Pemrosesan Data & Telemetri Real-Time (Radar / Avionik / Sensor)',
+        'Algoritma Kecerdasan Artifisial (AI / Machine Learning / Analitik Prediktif)',
+        'Arsitektur Terdistribusi High-Availability & Multi-Node Cluster',
+        'Sistem Komando & Kendali Taktis (C4ISR / GIS Spasial Militer)',
+      ],
+      specialIntegrations: [
+        'Protokol Komunikasi Taktis / Militer Khusus & Middleware Enkripsi',
+        'Sinkronisasi Multi-Pangkalan (Lanud) Offline-First & Replikasi Data',
+      ],
+      layeredSecurityStandards: [
+        'Enkripsi End-to-End & Modul Kriptografi (TLS 1.3 / AES-256 / HSM)',
+        'Autentikasi Multi-Faktor (MFA), RBAC Militer & Tanda Tangan Elektronik (TTE BSrE)',
+        'Audit Trail Imutabel, SIEM Telemetry & Deteksi Anomali Intrusi',
+        'Hardening Infrastruktur, Penetration Testing Independen & Kepatuhan BSSN/ITSec',
+      ],
     },
     personnelItems: [
       {
@@ -575,6 +625,13 @@ export const PROJECT_PRESET_TEMPLATES: ProjectPresetTemplate[] = [
       durationMonths: 4,
       locationFactor: 1.0,
       notes: 'Digitalisasi tata naskah dinas elektronik, tanda tangan elektronik (TTE BSrE), dan manajemen cuti/penugasan personel.',
+      highComplexityModules: [],
+      specialIntegrations: [
+        'Antarmuka Data Eksternal & Gateway Lintas Satker (SPBE / SOA)',
+      ],
+      layeredSecurityStandards: [
+        'Autentikasi Multi-Faktor (MFA), RBAC Militer & Tanda Tangan Elektronik (TTE BSrE)',
+      ],
     },
     personnelItems: [
       {

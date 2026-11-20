@@ -1,4 +1,5 @@
 import {
+  AuditReportResult,
   CalculationSummary,
   FinancialParameters,
   NonPersonnelCostItem,
@@ -147,7 +148,8 @@ export function generateClipboardReport(
   nonPersonnelItems: NonPersonnelCostItem[],
   financials: FinancialParameters,
   summary: CalculationSummary,
-  regulationVersion: string
+  regulationVersion: string,
+  auditReport?: AuditReportResult
 ): string {
   const lines: string[] = [];
   const hr = '========================================================================';
@@ -159,7 +161,7 @@ export function generateClipboardReport(
   lines.push(`Waktu Cetak          : ${formatTimestampID(new Date().toISOString())}`);
   lines.push(hr);
   lines.push('');
-  lines.push('I. PROFIL PROYEK & PENGADAAN');
+  lines.push('I. PROFIL PROYEK & KOMPLEKSITAS TEKNIS');
   lines.push(subHr);
   lines.push(`Nama Proyek / Aplikasi : ${profile.projectName}`);
   lines.push(`Satuan Kerja Pengusul  : ${profile.proposingUnit}`);
@@ -168,6 +170,15 @@ export function generateClipboardReport(
   lines.push(`Tingkat Kompleksitas   : ${profile.complexity}`);
   lines.push(`Durasi Pengerjaan      : ${profile.durationMonths} Bulan`);
   lines.push(`Faktor Indeks Lokasi   : ${profile.locationFactor.toFixed(2)}x`);
+  if (profile.highComplexityModules && profile.highComplexityModules.length > 0) {
+    lines.push(`Modul Kompleksitas     : ${profile.highComplexityModules.join('; ')}`);
+  }
+  if (profile.specialIntegrations && profile.specialIntegrations.length > 0) {
+    lines.push(`Integrasi Khusus       : ${profile.specialIntegrations.join('; ')}`);
+  }
+  if (profile.layeredSecurityStandards && profile.layeredSecurityStandards.length > 0) {
+    lines.push(`Standar Keamanan       : ${profile.layeredSecurityStandards.join('; ')}`);
+  }
   if (profile.notes) {
     lines.push(`Catatan Teknis         : ${profile.notes}`);
   }
@@ -184,15 +195,15 @@ export function generateClipboardReport(
     const subtotal = mm * activeRate;
     const rateTag = item.overrideRate !== null ? ' [OVERRIDE PROYEK]' : '';
 
-    lines.push(
-      `${idx + 1}. ${item.roleName} (${item.tier})${rateTag}`
-    );
+    lines.push(`${idx + 1}. ${item.roleName} (${item.tier})${rateTag}`);
     lines.push(
       `   Volume: ${item.headcount} Orang x ${item.durationMonths} Bulan = ${mm} OB | Tarif: ${formatIDR(activeRate)}/OB | Subtotal: ${formatIDR(subtotal)}`
     );
   });
   lines.push(subHr);
-  lines.push(`Total Volume Personel  : ${formatNumberID(summary.totalManMonths, 1)} Orang-Bulan (OB) (${summary.totalPersonnelHeadcount} Personel)`);
+  lines.push(
+    `Total Volume Personel  : ${formatNumberID(summary.totalManMonths, 1)} Orang-Bulan (OB) (${summary.totalPersonnelHeadcount} Personel)`
+  );
   lines.push(`Total Biaya Personel   : ${formatIDR(summary.totalPersonnelCost)}`);
   lines.push('');
   lines.push('III. RINCIAN BIAYA LANGSUNG NON-PERSONEL');
@@ -221,10 +232,42 @@ export function generateClipboardReport(
   lines.push(hr);
   lines.push(`GRAND TOTAL ESTIMASI (HPS / RAB)       : ${formatIDR(summary.grandTotalEstimation)}`);
   lines.push(hr);
+
+  if (auditReport) {
+    lines.push('');
+    lines.push('V. RINGKASAN SYSTEM AUDIT & EVALUASI KOMPLEKSITAS TEKNIS');
+    lines.push(subHr);
+    lines.push(`Status Audit           : ${auditReport.status}`);
+    lines.push(
+      `Skor Kompleksitas      : ${auditReport.technicalComplexityAssessment.complexityScore}/100`
+    );
+    lines.push(`Ringkasan Evaluasi     : ${auditReport.executiveSummary}`);
+    lines.push('');
+    lines.push('Temuan & Diagnosa:');
+    auditReport.findings.forEach((f, idx) => {
+      lines.push(`  ${idx + 1}. [${f.severity}] ${f.title}`);
+      lines.push(`     Diagnosa : ${f.diagnosis}`);
+      lines.push(`     Rujukan  : ${f.regulationCitation}`);
+    });
+    if (auditReport.solutions.adjustments.length > 0) {
+      lines.push('');
+      lines.push('Saran Solusi & Penyesuaian Terukur:');
+      auditReport.solutions.adjustments.forEach((adj, idx) => {
+        lines.push(
+          `  ${idx + 1}. ${adj.title} (${adj.currentValueLabel} -> ${adj.recommendedValueLabel} | Dampak HPS: ${formatIDR(adj.exactGrandTotalDelta)})`
+        );
+      });
+      lines.push(
+        `  Simulasi HPS Setelah Penyesuaian Terukur: ${formatIDR(auditReport.solutions.projectedGrandTotalAfterAdjustments)}`
+      );
+    }
+    lines.push(subHr);
+  }
+
   lines.push('');
   lines.push('CATATAN DISCLAIMER FORMAL:');
   lines.push(
-    'Hasil perhitungan AURA-SOFTWARE ini merupakan alat bantu analisis dan estimasi awal penyusunan Kertas Kerja HPS/RAB. Penetapan resmi Harga Perkiraan Sendiri (HPS) dan Rencana Anggaran Biaya (RAB) tetap mengikuti verifikasi teknis, analisis pasar terkini, serta pengesahan Pejabat Pembuat Komitmen (PPK) / Unit Berwenang sesuai peraturan perundang-undangan yang berlaku.'
+    'Hasil perhitungan dan analisis audit AURA-SOFTWARE ini merupakan alat bantu analisis dan estimasi awal penyusunan Kertas Kerja HPS/RAB. Penetapan resmi Harga Perkiraan Sendiri (HPS) dan Rencana Anggaran Biaya (RAB) tetap mengikuti verifikasi teknis, analisis pasar terkini, serta pengesahan Pejabat Pembuat Komitmen (PPK) / Unit Berwenang sesuai peraturan perundang-undangan yang berlaku.'
   );
 
   return lines.join('\n');

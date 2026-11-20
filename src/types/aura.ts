@@ -63,6 +63,9 @@ export interface ProjectProfile {
   durationMonths: number;
   locationFactor: number; // Indeks Kemahalan Konstruksi / Regional multiplier (default 1.00)
   notes: string;
+  highComplexityModules?: string[];
+  specialIntegrations?: string[];
+  layeredSecurityStandards?: string[];
 }
 
 export interface PersonnelAllocationItem {
@@ -119,3 +122,62 @@ export interface SavedSimulation {
 }
 
 export type SyncStatus = 'SYNCED' | 'OFFLINE CACHE' | 'SYNCING' | 'CUSTOM OVERRIDE';
+
+export type AuditStatusLevel =
+  | 'WAJAR / COMPLIANT'
+  | 'PERINGATAN / PERLU REVIU'
+  | 'ANOMALI KRITIS / INDIKASI KEMAHALAN';
+
+export interface AuditFindingItem {
+  id: string;
+  severity: 'COMPLIANT' | 'WARNING' | 'CRITICAL';
+  category: 'REGULASI_TARIF' | 'KOMPLEKSITAS_TEKNIS' | 'PARAMETER_KEUANGAN' | 'VOLUME_DURASI' | 'KEAMANAN_SIBER';
+  title: string;
+  diagnosis: string;
+  regulationCitation: string;
+  technicalContextJustification: string;
+  deterministicMetric: string;
+}
+
+export interface AuditAdjustmentAction {
+  id: string;
+  actionType:
+    | 'NORMALIZE_OVERRIDE_RATE'
+    | 'CAP_PERSONNEL_DURATION'
+    | 'ADJUST_OVERHEAD_PERCENT'
+    | 'ADJUST_PPN_PERCENT'
+    | 'DEDUPLICATE_NON_PERSONNEL';
+  targetId?: string;
+  title: string;
+  rationale: string;
+  regulationCitation: string;
+  currentValueLabel: string;
+  recommendedValueLabel: string;
+  recommendedNumericValue: number;
+  exactDirectCostDelta: number; // Deterministic change in Direct Cost (Rp)
+  exactGrandTotalDelta: number; // Deterministic change in Grand Total incl. Overhead & PPN (Rp)
+}
+
+export interface AuditReportResult {
+  status: AuditStatusLevel;
+  source: 'AI_SERVER_AUDIT' | 'LOCAL_HEURISTIC_ENGINE';
+  modelUsed: string;
+  auditedAt: string;
+  regulationVersion: string;
+  executiveSummary: string;
+  technicalComplexityAssessment: {
+    complexityScore: number; // 1 - 100
+    highComplexityCount: number;
+    specialIntegrationCount: number;
+    securityStandardCount: number;
+    workloadJustificationSummary: string;
+  };
+  findings: AuditFindingItem[];
+  solutions: {
+    summaryAdvice: string;
+    adjustments: AuditAdjustmentAction[];
+    currentGrandTotal: number;
+    projectedGrandTotalAfterAdjustments: number;
+    totalMeasuredSavings: number;
+  };
+}

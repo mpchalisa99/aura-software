@@ -298,7 +298,7 @@ export const RadarSyncModal: React.FC<RadarSyncModalProps> = ({
                 className="flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-slate-950 transition-colors whitespace-nowrap shrink-0"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin' : ''}`} />
-                <span>{isScanning ? 'Memindai & Validasi...' : 'Sync Tarif Sekarang'}</span>
+                <span>{isScanning ? 'Memindai & Validasi...' : 'SYNC REGULASI RESMI SEKARANG'}</span>
               </button>
 
               <button
@@ -320,6 +320,9 @@ export const RadarSyncModal: React.FC<RadarSyncModalProps> = ({
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Reset Seed Bawaan</span>
               </button>
+            </div>
+            <div className="text-[11px] font-mono text-cyan-300/80 pt-1">
+              Sumber Rujukan: {currentConfig.sourceAuthority}
             </div>
           </div>
         </div>

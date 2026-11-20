@@ -11,11 +11,14 @@ import {
   Upload,
 } from 'lucide-react';
 import {
+  AuditAdjustmentAction,
+  AuditReportResult,
   CalculationSummary,
   FinancialParameters,
   NonPersonnelCostItem,
   PersonnelAllocationItem,
   ProjectProfile,
+  RegulationConfigPayload,
 } from '../types/aura';
 import {
   formatIDR,
@@ -23,6 +26,7 @@ import {
   formatTimestampID,
   generateClipboardReport,
 } from '../utils/formatters';
+import { SystemAuditPanel } from './SystemAuditPanel';
 
 interface WorksheetTabProps {
   profile: ProjectProfile;
@@ -30,8 +34,12 @@ interface WorksheetTabProps {
   nonPersonnelItems: NonPersonnelCostItem[];
   financials: FinancialParameters;
   summary: CalculationSummary;
+  regulationConfig: RegulationConfigPayload;
   regulationVersion: string;
   lastUpdated: string;
+  auditReport: AuditReportResult;
+  onUpdateAuditReport: (report: AuditReportResult) => void;
+  onApplyAuditAdjustments: (adjustments: AuditAdjustmentAction[]) => void;
   onSaveSimulation: () => void;
   onImportProjectData: (data: {
     profile: ProjectProfile;
@@ -47,8 +55,12 @@ export const WorksheetTab: React.FC<WorksheetTabProps> = ({
   nonPersonnelItems,
   financials,
   summary,
+  regulationConfig,
   regulationVersion,
   lastUpdated,
+  auditReport,
+  onUpdateAuditReport,
+  onApplyAuditAdjustments,
   onSaveSimulation,
   onImportProjectData,
 }) => {
@@ -64,7 +76,8 @@ export const WorksheetTab: React.FC<WorksheetTabProps> = ({
     nonPersonnelItems,
     financials,
     summary,
-    regulationVersion
+    regulationVersion,
+    auditReport
   );
 
   const handleCopyClipboard = async () => {
@@ -92,6 +105,7 @@ export const WorksheetTab: React.FC<WorksheetTabProps> = ({
       nonPersonnelItems,
       financials,
       summary,
+      auditReport,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
       type: 'application/json',
@@ -118,6 +132,8 @@ export const WorksheetTab: React.FC<WorksheetTabProps> = ({
       ['Kompleksitas', profile.complexity],
       ['Durasi (Bulan)', String(profile.durationMonths)],
       ['Versi Regulasi', regulationVersion],
+      ['Status Audit', auditReport.status],
+      ['Skor Kompleksitas Teknis', `${auditReport.technicalComplexityAssessment.complexityScore}/100`],
       [],
       ['I. BIAYA LANGSUNG PERSONEL (MAN-MONTH / OB)'],
       ['No', 'Peran Tenaga Ahli', 'Kualifikasi', 'Jml Orang', 'Durasi (Bln)', 'Volume (OB)', 'Tarif Satuan (Rp)', 'Status Tarif', 'Subtotal (Rp)'],
@@ -225,6 +241,8 @@ export const WorksheetTab: React.FC<WorksheetTabProps> = ({
             <span>DOKUMEN KERTAS KERJA HPS / RAB</span>
             <span aria-hidden="true">·</span>
             <span>RUJUKAN: {regulationVersion}</span>
+            <span aria-hidden="true">·</span>
+            <span>AUDIT: {auditReport.status}</span>
           </div>
           <h2 className="text-xl font-display font-semibold text-white mt-0.5">
             Rincian Kertas Kerja Penilaian Harga Perangkat Lunak
@@ -240,7 +258,7 @@ export const WorksheetTab: React.FC<WorksheetTabProps> = ({
             {copiedClipboard ? (
               <>
                 <Check className="w-4 h-4" />
-                <span>Tersalin ke Clipboard</span>
+                <span>Tersalin ke Clipboard (Termasuk Audit)</span>
               </>
             ) : (
               <>
@@ -333,7 +351,7 @@ export const WorksheetTab: React.FC<WorksheetTabProps> = ({
         <section className="hud-panel p-5 no-print">
           <div className="flex items-center justify-between pb-3 border-b border-cyan-500/20">
             <span className="text-xs font-mono text-cyan-300">
-              PRATINJAU TEKS TERSTRUKTUR (FORMAT CLIPBOARD)
+              PRATINJAU TEKS TERSTRUKTUR (TERMASUK RINGKASAN AUDIT &amp; DISCLAIMER)
             </span>
             <button
               type="button"
@@ -675,11 +693,23 @@ export const WorksheetTab: React.FC<WorksheetTabProps> = ({
               CATATAN DISCLAIMER FORMAL &amp; KEPATUHAN REGULASI PENGADAAN
             </p>
             <p className="mt-1">
-              Hasil perhitungan pada aplikasi <strong className="text-white">AURA-SOFTWARE</strong> ini merupakan alat bantu analisis teknis dan estimasi awal penyusunan Kertas Kerja Harga Perkiraan Sendiri (HPS) maupun Rencana Anggaran Biaya (RAB). Penetapan resmi nilai HPS/RAB tetap mengikuti verifikasi dokumen Kerangka Acuan Kerja (KAK), survei/analisis pasar terkini, ketersediaan pagu anggaran (DIPA), serta pengesahan oleh Pejabat Pembuat Komitmen (PPK) atau Unit Berwenang di lingkungan TNI Angkatan Udara sesuai Peraturan Presiden tentang Pengadaan Barang/Jasa Pemerintah.
+              Hasil perhitungan dan analisis audit pada aplikasi <strong className="text-white">AURA-SOFTWARE</strong> ini merupakan alat bantu analisis teknis dan estimasi awal penyusunan Kertas Kerja Harga Perkiraan Sendiri (HPS) maupun Rencana Anggaran Biaya (RAB). Penetapan resmi nilai HPS/RAB tetap mengikuti verifikasi dokumen Kerangka Acuan Kerja (KAK), survei/analisis pasar terkini, ketersediaan pagu anggaran (DIPA), serta pengesahan oleh Pejabat Pembuat Komitmen (PPK) atau Unit Berwenang di lingkungan TNI Angkatan Udara sesuai Peraturan Presiden tentang Pengadaan Barang/Jasa Pemerintah.
             </p>
           </div>
         </div>
       </section>
+
+      {/* SYSTEM AUDIT & ANOMALY RADAR PANEL ON WORKSHEET PAGE */}
+      <SystemAuditPanel
+        profile={profile}
+        personnelItems={personnelItems}
+        nonPersonnelItems={nonPersonnelItems}
+        financials={financials}
+        regulationConfig={regulationConfig}
+        auditReport={auditReport}
+        onUpdateAuditReport={onUpdateAuditReport}
+        onApplyAdjustments={onApplyAuditAdjustments}
+      />
     </div>
   );
 };

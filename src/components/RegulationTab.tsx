@@ -128,9 +128,11 @@ export const RegulationTab: React.FC<RegulationTabProps> = ({
               <span>BASIS DATA REGULASI PENGADAAN &amp; STANDAR BIAYA</span>
               <span aria-hidden="true">·</span>
               <span>VERSI: {regulationConfig.version}</span>
+              <span aria-hidden="true">·</span>
+              <span>SUMBER: {regulationConfig.sourceAuthority}</span>
             </div>
             <h2 className="text-xl font-display font-semibold text-white mt-1">
-              Rujukan Regulasi Pemerintah &amp; Standar Remunerasi Aktif
+              Rujukan Regulasi Pemerintah &amp; Standar Remunerasi Aktif (Auto-Sync Berkala)
             </h2>
             <p className="text-xs text-slate-400 mt-1 font-mono">
               Endpoint JSON: {endpointUrl} · Pembaruan Terakhir:{' '}
@@ -145,7 +147,7 @@ export const RegulationTab: React.FC<RegulationTabProps> = ({
               className="flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition-colors whitespace-nowrap shrink-0"
             >
               <RefreshCw className="w-3.5 h-3.5" />
-              <span>Sync Tarif &amp; Endpoint JSON</span>
+              <span>SYNC REGULASI RESMI SEKARANG</span>
             </button>
 
             <button
