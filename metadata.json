@@ -1,0 +1,6 @@
+{
+  "name": "AURA-SOFTWARE — Aplikasi Ukur Regulasi & Anggaran Software",
+  "description": "Kalkulator dan kertas kerja estimasi harga pengembangan perangkat lunak (HPS/RAB) bertema HUD taktis TNI Angkatan Udara yang mengacu pada regulasi pengadaan pemerintah.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
