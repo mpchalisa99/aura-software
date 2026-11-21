@@ -1,30 +1,93 @@
 import { GoogleGenAI, Type } from '@google/genai';
 import type { Request, Response } from 'express';
-import { DraftEstimatePayload } from '../src/types/aura';
+import {
+  DEFAULT_REGULATION_CONFIG,
+  HIGH_COMPLEXITY_MODULE_OPTIONS,
+  LAYERED_SECURITY_STANDARD_OPTIONS,
+  SPECIAL_INTEGRATION_OPTIONS,
+} from '../src/data/defaultRegulations';
+import { DraftEstimatePayload, RegulationConfigPayload } from '../src/types/aura';
+import {
+  buildPricedItemsFromDraft,
+  classifyArchitecturalTier,
+  generateDeterministicArchitecturalEstimate,
+  normalizeDraftEstimate,
+} from '../src/utils/architecturalEstimator';
+import { formatIDR, formatNumberID } from '../src/utils/formatters';
 
 interface AssistantRequestBody {
   message?: string;
-  regulationConfig?: any;
+  regulationConfig?: RegulationConfigPayload;
 }
 
-const SYSTEM_INSTRUCTION = `Anda adalah Asisten AI Taktis Pengadaan Perangkat Lunak TNI Angkatan Udara (Disinfolahtaau) dan Ahli HPS/RAB Pengadaan Barang/Jasa Pemerintah (Perpres No. 12 Tahun 2021 & SBM Kemenkeu 2026).
-Tugas Anda adalah:
-1. Menganalisis kebutuhan sistem informasi/perangkat lunak militer atau pemerintahan yang diminta pengguna.
-2. Memberikan penjelasan teknis, arsitektur, dan dasar regulasi yang relevan (misalnya C4ISR, SWA BHUWANA PAKSA, enkripsi militer, integrasi radar, portal e-office).
-3. Menyusun draf estimasi anggaran terstruktur (draftEstimate) yang mencakup:
-   - projectName: Nama proyek sesuai usulan.
-   - proposingUnit: Satuan pengusul (misalnya Dinas Informasi dan Pengolahan Data Angkatan Udara / Disinfolahtaau).
-   - procurementScheme: Skema pengadaan wajar (misalnya "Tender / Seleksi Jasa Konsultansi Badan Usaha" atau "Swakelola Tipe I / Internal TNI AU").
-   - complexityLevel: Tingkat kompleksitas (misalnya "Tinggi (Sistem Komando Taktis / C4ISR & Analitik Real-Time)" atau "Kritis / Strategis").
-   - durationMonths: Durasi proyek dalam bulan (misalnya 6, 12, atau 18).
-   - locationFactor: Indeks lokasi (default 1.00).
-   - highComplexityModules: Daftar modul utama yang relevan.
-   - specialIntegrations: Daftar integrasi khusus (misalnya API Gateway, Radar Feed).
-   - layeredSecurityStandards: Standar keamanan berlapis (misalnya "ISO 27001", "Pentest Independen BSSN").
-   - personnel: Alokasi tenaga ahli proporsional (mengacu pada kode peran TA-01 s.d. TA-10, kualifikasi, jumlah orang rasional 2-6 per peran, durasi).
-   - nonPersonnel: Biaya pendukung (Server Cloud, Lisensi, Integrasi API, Security Testing, Dokumentasi, SLA).
+const SYSTEM_INSTRUCTION = `Anda adalah Arsitek Sistem Senior & Estimator HPS/RAB Perangkat Lunak TNI Angkatan Udara (Disinfolahtaau) pada aplikasi AURA-SOFTWARE yang mengacu pada Perpres No. 12 Tahun 2021, Perlem LKPP No. 12 Tahun 2021, SBM Kemenkeu TA 2026, dan Pedoman Billing Rate INKINDO 2026.
 
-DILARANG BERHALUSINASI ANGKA TAHUN ATAU TARIF DI LUAR STANDAR RESMI SBM / INKINDO 2026. Gunakan tarif satuan yang wajar dan proporsional.`;
+TUGAS WAJIB ANDA:
+Petakan setiap permintaan pengguna secara TAJAM dan PROPORSIONAL ke salah satu dari 4 TIER KOMPLEKSITAS ARSITEKTUR berikut (JANGAN menyamaratakan aplikasi sederhana dengan sistem strategis):
+
+1. TIER 1 — UTILITAS / APLIKASI STANDAR (contoh: aplikasi kalkulator, pencatatan sederhana, form statis, landing page, web profil, CRUD ringan):
+   - tierClassification: "TIER 1"
+   - complexityLevel: "Rendah (Sistem Informasi Standar / CRUD)"
+   - procurementScheme: "Pengadaan Langsung (< Rp 100 Juta / Rp 200 Juta)"
+   - complexityScore: 10–25
+   - durationMonths: 1–2 Bulan
+   - Tim: 2–3 Orang (misal role-frontend Junior/Middle, role-uiux atau role-qa-sec paruh waktu 0.5-1 bulan; TANPA AI Engineer, TANPA DevOps cluster, TANPA arsitek terdistribusi)
+   - Non-Personel: minimal (hosting ringan Rp 1,5–2,5 jt/bln & dokumentasi dasar Rp 3,5–5 jt)
+   - Kisaran Grand Total: puluhan juta hingga < Rp 150 Juta.
+
+2. TIER 2 — SISTEM INFORMASI MENENGAH / PORTAL SATKER (contoh: e-office, administrasi personel Lanud, manajemen inventori/logistik standar, portal layanan internal):
+   - tierClassification: "TIER 2"
+   - complexityLevel: "Menengah (Integrasi Multi-Satker & Portal Layanan)"
+   - procurementScheme: "E-Purchasing Katalog Elektronik (E-Katalog LKPP)"
+   - complexityScore: 35–55
+   - durationMonths: 3–5 Bulan
+   - Tim: 5–7 Orang kualifikasi Middle (role-pm, role-sa, role-uiux, role-backend, role-frontend, role-qa-sec, role-tw)
+   - Non-Personel: Cloud VPS standar, integrasi SSO/API ringan, dokumentasi, SLA dasar
+   - Kisaran Grand Total: Rp 350 Juta – Rp 1,2 Miliar.
+
+3. TIER 3 — SISTEM REAL-TIME, SPASIAL & TELEMETRI KOMPLEKS (contoh: pelacakan pesawat real-time seperti Flightradar24, pemrosesan stream ADS-B/radar/AIS, peta spasial GIS interaktif tinggi, multi-platform web & mobile):
+   - tierClassification: "TIER 3"
+   - complexityLevel: "Tinggi (Sistem Komando Taktis / C4ISR & Analitik Real-Time)"
+   - procurementScheme: "Tender / Seleksi Jasa Konsultansi Badan Usaha"
+   - complexityScore: 75–90
+   - durationMonths: 8–12 Bulan
+   - Tim: 11–16 Orang kualifikasi Senior–Lead (role-pm Senior, role-sa Lead, role-uiux Senior, role-backend 3 org Senior, role-frontend 2 org Senior, role-mobile 2 org Senior, role-ai-data Senior, role-devops Senior, role-qa-sec Senior, role-tw Middle)
+   - Non-Personel: Server/Cloud cluster high-availability, lisensi map engine/spatial & feed data, integrasi API, penetration testing, dokumentasi, SLA 99.9%
+   - Kisaran Grand Total: Rp 2,5 Miliar – Rp 6,5 Miliar.
+
+4. TIER 4 — SISTEM STRATEGIS / PERTAHANAN SIBER & C4ISR KRITIS (contoh: komando pertahanan udara terintegrasi, sensor fusion multi-radar, kriptografi militer berlapis, pertahanan siber nasional/Kohanudnas):
+   - tierClassification: "TIER 4"
+   - complexityLevel: "Kritis / Strategis (Pertahanan Siber & Avionik Terintegrasi)"
+   - procurementScheme: "Tender / Seleksi Jasa Konsultansi Badan Usaha"
+   - complexityScore: 90–100
+   - durationMonths: 12–18 Bulan
+   - Tim: 16–24 Orang kualifikasi Senior & Lead / Principal dengan standar keamanan siber penuh
+   - Non-Personel: Bare-metal/GPU cluster on-premise, lisensi sensor fusion/GIS/HSM, gateway protokol militer, red-teaming/audit kriptografi independen, transfer teknologi, SLA 24/7
+   - Kisaran Grand Total: Rp 6,5 Miliar – Rp 12 Miliar.
+
+ATURAN WAJIB KODE PERAN & KUALIFIKASI:
+- Gunakan HANYA roleId valid berikut: "role-pm", "role-sa", "role-uiux", "role-backend", "role-frontend", "role-mobile", "role-ai-data", "role-qa-sec", "role-devops", "role-tw".
+- Gunakan HANYA tier valid berikut: "Junior", "Middle", "Senior", "Lead / Principal".
+- Gunakan HANYA kategori nonPersonnel valid berikut: "Server / Cloud", "Lisensi", "Integrasi API", "Security Testing", "Dokumentasi", "SLA & Pemeliharaan".
+- Durasi setiap baris personel TIDAK BOLEH melebihi durationMonths proyek.
+- Pada field "reply" (Bahasa Indonesia formal teknis), WAJIB jelaskan rasionalisasi arsitektur mengapa biaya tersebut terbentuk (komponen kompleks apa yang dibutuhkan atau sengaja ditiadakan karena tidak relevan dengan skala proyek) serta dasar regulasi aktif. Jangan mengarang tarif di luar tabel regulasi aktif.`;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`AI request timed out after ${ms}ms`));
+    }, ms);
+    promise
+      .then((val) => {
+        clearTimeout(timer);
+        resolve(val);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
 
 export default async function handler(req: Request, res: Response) {
   if (req.method !== 'POST') {
@@ -41,76 +104,23 @@ export default async function handler(req: Request, res: Response) {
     return res.status(400).json({ error: 'Pesan chat tidak boleh kosong.' });
   }
 
+  const activeConfig: RegulationConfigPayload =
+    body.regulationConfig?.roleTariffs?.length
+      ? body.regulationConfig
+      : DEFAULT_REGULATION_CONFIG;
+
   const apiKey = process.env.GEMINI_API_KEY;
-
-  // Local Deterministic Fallback Generator
-  const generateDeterministicAssistantFallback = (userMsg: string) => {
-    const lower = userMsg.toLowerCase();
-    let projName = 'Sistem Informasi Komando & Layanan Taktis TNI AU';
-    let duration = 12;
-    let complexity = 'Tinggi (Sistem Komando Taktis / C4ISR & Analitik Real-Time)';
-    let headcounts = { pm: 1, arch: 1, dev: 4, qa: 2, devops: 2 };
-
-    if (lower.includes('flightradar') || lower.includes('pesawat') || lower.includes('real-time')) {
-      projName = 'Sistem Real-Time Radar & Pelacakan Penerbangan Taktis (FlightTracker TNI AU)';
-      duration = 10;
-    } else if (lower.includes('siber') || lower.includes('cyber') || lower.includes('telemetri')) {
-      projName = 'Pusat Operasi Pertahanan Siber & Telemetri Komando Pertahanan Udara (Kohanudnas)';
-      duration = 14;
-    } else if (lower.includes('e-office') || lower.includes('administrasi') || lower.includes('lanud')) {
-      projName = 'Portal Terpadu E-Office & Administrasi Personel Markas Besar TNI AU';
-      duration = 8;
-    }
-
-    const draftEstimate: DraftEstimatePayload = {
-      projectName: projName,
-      proposingUnit: 'Dinas Informasi dan Pengolahan Data Angkatan Udara (Disinfolahtaau)',
-      procurementScheme: 'Tender / Seleksi Jasa Konsultansi Badan Usaha',
-      complexityLevel: complexity,
-      durationMonths: duration,
-      locationFactor: 1.00,
-      highComplexityModules: [
-        'Modul Inti & Dashboard Komando Operasi',
-        'Mesin Pemrosesan Data & Enkripsi Kriptografi Militer',
-        'Gateway Integrasi Sensor & API Eksternal',
-        'Modul Audit Trail & Keamanan Berlapis (AppSec)'
-      ],
-      specialIntegrations: [
-        'Integrasi Radar / Sensor Telemetri (REST/WebSocket)',
-        'Active Directory / LDAP Mabes TNI AU SSO'
-      ],
-      layeredSecurityStandards: [
-        'ISO 27001:2022 Information Security Management',
-        'Penetration Testing & Vulnerability Assessment Independen',
-        'Enkripsi Data AES-256 (At Rest & In Transit)'
-      ],
-      personnel: [
-        { roleId: 'role-pm', roleName: 'Project Manager / Team Leader', tier: 'Senior', headcount: headcounts.pm, durationMonths: duration, taskDescription: 'Manajemen Proyek, Pelaporan Komando, & Mitigasi Risiko' },
-        { roleId: 'role-arch', roleName: 'Solution / System Architect', tier: 'Lead / Principal', headcount: headcounts.arch, durationMonths: duration, taskDescription: 'Desain Arsitektur Sistem C4ISR & Standar Enkripsi' },
-        { roleId: 'role-dev', roleName: 'Full-Stack Software Engineer / Developer', tier: 'Senior', headcount: headcounts.dev, durationMonths: duration, taskDescription: 'Pengembangan Backend Core & Frontend Tactical HUD' },
-        { roleId: 'role-qa-sec', roleName: 'QA & Security Specialist (AppSec)', tier: 'Senior', headcount: headcounts.qa, durationMonths: duration, taskDescription: 'Pengujian Kelaikan Fungsional & Pentest Keamanan Siber' },
-        { roleId: 'role-devops', roleName: 'DevOps & Cloud Infrastructure Engineer', tier: 'Senior', headcount: headcounts.devops, durationMonths: duration, taskDescription: 'Penerapan Cluster Server On-Premise / Secure Cloud TNI AU' }
-      ],
-      nonPersonnel: [
-        { category: 'Server / Cloud', itemName: 'Dedicated Secure Cloud Server & Kubernetes Cluster', quantity: duration, unit: 'Bulan', unitPrice: 15000000, notes: 'Infrastruktur High-Availability & Isolated VPC' },
-        { category: 'Lisensi', itemName: 'Enterprise Database & Middleware Licences', quantity: 1, unit: 'Paket', unitPrice: 45000000, notes: 'Lisensi komersial terverifikasi TKDN' },
-        { category: 'Integrasi API', itemName: 'Secure API Gateway & Sensor Connector SDK', quantity: 2, unit: 'Paket', unitPrice: 20000000, notes: 'Koneksi telemetri dan enkripsi token' },
-        { category: 'Security Testing', itemName: 'Independent Penetration Testing & Vulnerability Audit', quantity: 2, unit: 'Kegiatan', unitPrice: 30000000, notes: 'Audit kelaikan siber oleh lembaga independen' },
-        { category: 'Dokumentasi', itemName: 'Buku Manual Teknis, Arsitektur, & SOP Administrator', quantity: 3, unit: 'Kegiatan', unitPrice: 7500000, notes: 'Dokumentasi lengkap serah terima sistem' }
-      ]
-    };
-
-    const reply = `ANALISIS TAKTIS AI (DETERMINISTIC FALLBACK):
-Berdasarkan permintaan Anda ("${userMsg}"), sistem AURA menyusun draf estimasi pengadaan perangkat lunak untuk **${projName}** dengan durasi ${duration} bulan. 
-Perhitungan mengacu pada Pedoman Perpres No. 12 Tahun 2021 dan standar Billing Rate SBM/INKINDO 2026. Struktur tim dirancang proporsional (${headcounts.pm + headcounts.arch + headcounts.dev + headcounts.qa + headcounts.devops} tenaga ahli inti) dengan standar keamanan berlapis untuk menjamin kelaikan operasional TNI AU.
-Silakan klik tombol **"TERAPKAN KE FORM KALKULATOR"** di bawah untuk memuat draf ini ke kalkulator utama.`;
-
-    return { reply, draftEstimate };
-  };
-
   if (!apiKey || apiKey === 'MY_GEMINI_API_KEY' || !apiKey.trim()) {
-    const fallback = generateDeterministicAssistantFallback(message);
-    return res.status(200).json(fallback);
+    const fallback = generateDeterministicArchitecturalEstimate(
+      message,
+      activeConfig,
+      'SERVER_FALLBACK'
+    );
+    return res.status(200).json({
+      ...fallback,
+      source: 'LOCAL_DETERMINISTIC',
+      modelUsed: 'Architectural-4Tier-Engine-v3.0',
+    });
   }
 
   try {
@@ -120,6 +130,15 @@ Silakan klik tombol **"TERAPKAN KE FORM KALKULATOR"** di bawah untuk memuat draf
         headers: { 'User-Agent': 'aistudio-build' },
       },
     });
+
+    const tierHint = classifyArchitecturalTier(message);
+
+    const compactTariffReference = activeConfig.roleTariffs.map((r) => ({
+      roleId: r.id,
+      code: r.code,
+      roleName: r.roleName,
+      ratesRpPerOB: r.rates,
+    }));
 
     const responseSchema = {
       type: Type.OBJECT,
@@ -132,6 +151,9 @@ Silakan klik tombol **"TERAPKAN KE FORM KALKULATOR"** di bawah untuk memuat draf
             proposingUnit: { type: Type.STRING },
             procurementScheme: { type: Type.STRING },
             complexityLevel: { type: Type.STRING },
+            tierClassification: { type: Type.STRING },
+            complexityScore: { type: Type.INTEGER },
+            recommendedOverheadPercent: { type: Type.NUMBER },
             durationMonths: { type: Type.INTEGER },
             locationFactor: { type: Type.NUMBER },
             highComplexityModules: { type: Type.ARRAY, items: { type: Type.STRING } },
@@ -146,7 +168,7 @@ Silakan klik tombol **"TERAPKAN KE FORM KALKULATOR"** di bawah untuk memuat draf
                   roleName: { type: Type.STRING },
                   tier: { type: Type.STRING },
                   headcount: { type: Type.INTEGER },
-                  durationMonths: { type: Type.INTEGER },
+                  durationMonths: { type: Type.NUMBER },
                   taskDescription: { type: Type.STRING },
                 },
                 required: ['roleId', 'roleName', 'tier', 'headcount', 'durationMonths', 'taskDescription'],
@@ -173,6 +195,8 @@ Silakan klik tombol **"TERAPKAN KE FORM KALKULATOR"** di bawah untuk memuat draf
             'proposingUnit',
             'procurementScheme',
             'complexityLevel',
+            'tierClassification',
+            'complexityScore',
             'durationMonths',
             'locationFactor',
             'highComplexityModules',
@@ -186,31 +210,96 @@ Silakan klik tombol **"TERAPKAN KE FORM KALKULATOR"** di bawah untuk memuat draf
       required: ['reply', 'draftEstimate'],
     };
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 9500);
+    const userPrompt = `Permintaan pengguna: "${message}"
 
-    const geminiRes = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: `Pengguna meminta estimasi/chat taktis: "${message}". Buat analisis dan draftEstimate terstruktur sesuai instruksi sistem.`,
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        temperature: 0.2,
-        responseMimeType: 'application/json',
-        responseSchema,
-      },
-    });
+Referensi Regulasi Aktif (${activeConfig.version}, PPN ${activeConfig.defaultPpnPercent}%, Overhead Wajar ${activeConfig.recommendedOverheadRange[0]}%-${activeConfig.recommendedOverheadRange[1]}%):
+Tabel Billing Rate Peran (Rp/OB):
+${JSON.stringify(compactTariffReference)}
 
-    clearTimeout(timeout);
+Opsi Checkbox Fitur Resmi (gunakan string persis di bawah bila relevan, atau kosongkan [] untuk TIER 1):
+- highComplexityModules: ${JSON.stringify(HIGH_COMPLEXITY_MODULE_OPTIONS)}
+- specialIntegrations: ${JSON.stringify(SPECIAL_INTEGRATION_OPTIONS)}
+- layeredSecurityStandards: ${JSON.stringify(LAYERED_SECURITY_STANDARD_OPTIONS)}
 
-    const text = geminiRes.text || '{}';
-    const parsed = JSON.parse(text);
-    if (parsed && parsed.reply && parsed.draftEstimate) {
-      return res.status(200).json(parsed);
-    } else {
-      throw new Error('Format balasan AI tidak sesuai.');
+Indikasi awal klasifikasi arsitektur sistem: ${tierHint.tier} (${tierHint.tierLabel}). Pastikan estimasi benar-benar proporsional dengan kompleksitas permintaan pengguna dan jelaskan rasionalisasi arsitekturnya pada "reply".`;
+
+    let activeModelName = 'gemini-2.5-flash';
+    let responseText = '';
+
+    try {
+      const geminiRes = await withTimeout(
+        ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: userPrompt,
+          config: {
+            systemInstruction: SYSTEM_INSTRUCTION,
+            temperature: 0.2,
+            responseMimeType: 'application/json',
+            responseSchema,
+          },
+        }),
+        9200
+      );
+      responseText = geminiRes.text || '';
+    } catch {
+      activeModelName = 'gemini-4-hydrogen';
+      const fallbackRes = await withTimeout(
+        ai.models.generateContent({
+          model: 'gemini-4-hydrogen',
+          contents: userPrompt,
+          config: {
+            systemInstruction: SYSTEM_INSTRUCTION,
+            responseMimeType: 'application/json',
+            responseSchema,
+          },
+        }),
+        5500
+      );
+      responseText = fallbackRes.text || '';
     }
-  } catch (err) {
-    const fallback = generateDeterministicAssistantFallback(message);
-    return res.status(200).json(fallback);
+
+    const parsed = JSON.parse(responseText || '{}') as {
+      reply?: string;
+      draftEstimate?: Partial<DraftEstimatePayload>;
+    };
+
+    if (!parsed || !parsed.reply || !parsed.draftEstimate) {
+      throw new Error('Format balasan AI tidak lengkap.');
+    }
+
+    // Normalize AI output and lock all pricing deterministically to active regulationConfig
+    const normalizedDraft = normalizeDraftEstimate(
+      parsed.draftEstimate,
+      message,
+      activeConfig
+    );
+
+    // Ensure at least 1 personnel item exists; otherwise use deterministic fallback
+    if (normalizedDraft.personnel.length === 0) {
+      throw new Error('Daftar personel AI kosong.');
+    }
+
+    const { summary } = buildPricedItemsFromDraft(normalizedDraft, activeConfig);
+
+    // Append deterministic locked financial readout so chat text matches calculator 100%
+    const verifiedFooter = `\n\n─── RINGKASAN TERKUNCI DETERMINISTIK (${activeConfig.version}) ───\n• Klasifikasi: ${normalizedDraft.tierLabel} (Skor ${normalizedDraft.complexityScore}/100)\n• Durasi & Tim: ${normalizedDraft.durationMonths} Bulan · ${summary.totalPersonnelHeadcount} Orang (${formatNumberID(summary.totalManMonths, 1)} OB)\n• Biaya Personel: ${formatIDR(summary.totalPersonnelCost)}\n• Biaya Non-Personel: ${formatIDR(summary.totalNonPersonnelCost)}\n• Estimasi Grand Total HPS/RAB (incl. Overhead ${normalizedDraft.recommendedOverheadPercent ?? 10}% & PPN ${activeConfig.defaultPpnPercent}%): ${formatIDR(summary.grandTotalEstimation)}`;
+
+    return res.status(200).json({
+      reply: `${parsed.reply.trim()}${verifiedFooter}`,
+      draftEstimate: normalizedDraft,
+      source: 'AI_SERVER',
+      modelUsed: activeModelName,
+    });
+  } catch {
+    const fallback = generateDeterministicArchitecturalEstimate(
+      message,
+      activeConfig,
+      'SERVER_FALLBACK'
+    );
+    return res.status(200).json({
+      ...fallback,
+      source: 'LOCAL_DETERMINISTIC',
+      modelUsed: 'Architectural-4Tier-Engine-v3.0',
+    });
   }
 }

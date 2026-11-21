@@ -33,7 +33,6 @@ import {
 } from '../types/aura';
 import { formatIDR, formatNumberID } from '../utils/formatters';
 import { SystemAuditPanel } from './SystemAuditPanel';
-import { FinancialIntelligenceAgentPanel } from './FinancialIntelligenceAgentPanel';
 
 interface CalculatorTabProps {
   profile: ProjectProfile;
@@ -216,13 +215,6 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({
 
   return (
     <div className="space-y-8">
-      {/* Financial Intelligence & Defense Valuation Agent Panel */}
-      <FinancialIntelligenceAgentPanel
-        profile={profile}
-        summary={summary}
-        regulationConfig={regulationConfig}
-      />
-
       {/* 1. PROFIL PROYEK, KOMPLEKSITAS TEKNIS MENDALAM & TEMPLATE SKENARIO TNI AU */}
       <section className="hud-panel p-6">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-5 border-b border-cyan-500/20">

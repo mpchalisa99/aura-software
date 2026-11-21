@@ -202,11 +202,17 @@ export interface DraftEstimateNonPersonnel {
   notes: string;
 }
 
+export type ArchitecturalTierCode = 'TIER 1' | 'TIER 2' | 'TIER 3' | 'TIER 4';
+
 export interface DraftEstimatePayload {
   projectName: string;
   proposingUnit: string;
   procurementScheme: string;
   complexityLevel: string;
+  tierClassification?: ArchitecturalTierCode;
+  tierLabel?: string;
+  complexityScore?: number;
+  recommendedOverheadPercent?: number;
   durationMonths: number;
   locationFactor: number;
   highComplexityModules: string[];
@@ -221,5 +227,7 @@ export interface AssistantChatMessage {
   sender: 'user' | 'assistant';
   timestamp: string;
   reply: string;
+  source?: 'AI_SERVER' | 'LOCAL_DETERMINISTIC';
+  modelUsed?: string;
   draftEstimate?: DraftEstimatePayload;
 }

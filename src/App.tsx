@@ -48,16 +48,21 @@ import {
 import {
   AuditAdjustmentAction,
   AuditReportResult,
+  ComplexityLevel,
   DraftEstimatePayload,
   FinancialParameters,
   NonPersonnelCostItem,
   PersonnelAllocationItem,
+  ProcurementScheme,
   ProjectProfile,
-  QualificationTier,
   RegulationConfigPayload,
   SavedSimulation,
   SyncStatus,
 } from './types/aura';
+import {
+  buildPricedItemsFromDraft,
+  normalizeDraftEstimate,
+} from './utils/architecturalEstimator';
 import {
   applyAuditAdjustmentsToState,
   runDeterministicAudit,
@@ -202,51 +207,48 @@ export default function App() {
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
 
   const handleApplyDraftEstimate = (draft: DraftEstimatePayload) => {
+    const normalized = normalizeDraftEstimate(
+      draft,
+      draft.projectName || '',
+      regulationConfig
+    );
+    const priced = buildPricedItemsFromDraft(normalized, regulationConfig);
+    const stamp = Date.now();
+
     setProfile((prev) => ({
       ...prev,
-      projectName: draft.projectName || prev.projectName,
-      proposingUnit: draft.proposingUnit || prev.proposingUnit,
-      procurementScheme: (draft.procurementScheme as any) || prev.procurementScheme,
-      complexity: (draft.complexityLevel as any) || prev.complexity,
-      durationMonths: draft.durationMonths || prev.durationMonths,
-      locationFactor: draft.locationFactor || prev.locationFactor,
-      highComplexityModules: draft.highComplexityModules || prev.highComplexityModules,
-      specialIntegrations: draft.specialIntegrations || prev.specialIntegrations,
-      layeredSecurityStandards: draft.layeredSecurityStandards || prev.layeredSecurityStandards,
+      projectName: normalized.projectName,
+      proposingUnit: normalized.proposingUnit,
+      procurementScheme: normalized.procurementScheme as ProcurementScheme,
+      complexity: normalized.complexityLevel as ComplexityLevel,
+      durationMonths: normalized.durationMonths,
+      locationFactor: normalized.locationFactor,
+      highComplexityModules: normalized.highComplexityModules,
+      specialIntegrations: normalized.specialIntegrations,
+      layeredSecurityStandards: normalized.layeredSecurityStandards,
     }));
 
-    const mappedPersonnel: PersonnelAllocationItem[] = draft.personnel.map((p, idx) => {
-      const foundRole =
-        regulationConfig.roleTariffs.find((r) => r.id === p.roleId) ||
-        regulationConfig.roleTariffs[0];
-      const tier = (p.tier as QualificationTier) || 'Senior';
-      return {
-        id: `draft-p-${Date.now()}-${idx}`,
-        roleId: foundRole.id,
-        roleName: foundRole.roleName,
-        tier,
-        headcount: p.headcount,
-        durationMonths: p.durationMonths || draft.durationMonths,
-        standardRate: foundRole.rates[tier] ?? foundRole.rates.Senior,
-        overrideRate: null,
-        taskDescription: p.taskDescription,
-      };
-    });
-    setPersonnelItems(mappedPersonnel);
+    setPersonnelItems(
+      priced.personnelItems.map((item, idx) => ({
+        ...item,
+        id: `draft-p-${stamp}-${idx}`,
+      }))
+    );
 
-    const mappedNonPersonnel: NonPersonnelCostItem[] = draft.nonPersonnel.map((np, idx) => ({
-      id: `draft-np-${Date.now()}-${idx}`,
-      category: np.category,
-      itemName: np.itemName,
-      quantity: np.quantity,
-      unit: np.unit,
-      unitPrice: np.unitPrice,
-      notes: np.notes,
-    }));
-    setNonPersonnelItems(mappedNonPersonnel);
+    setNonPersonnelItems(
+      priced.nonPersonnelItems.map((item, idx) => ({
+        ...item,
+        id: `draft-np-${stamp}-${idx}`,
+      }))
+    );
 
-    setSyncNotice(`Draf estimasi "${draft.projectName}" berhasil dimuat ke Form Kalkulator.`);
-    setTimeout(() => setSyncNotice(null), 4500);
+    setFinancials(priced.financials);
+    setActiveTab('calculator');
+
+    setSyncNotice(
+      `Draf estimasi ${normalized.tierClassification || ''} "${normalized.projectName}" (${formatIDR(priced.summary.grandTotalEstimation)}) berhasil dimuat ke Form Kalkulator.`
+    );
+    setTimeout(() => setSyncNotice(null), 5000);
     setIsAssistantOpen(false);
   };
 
