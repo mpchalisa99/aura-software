@@ -56,7 +56,7 @@ export const SystemAuditPanel: React.FC<SystemAuditPanelProps> = ({
     setAiStatusNotice(null);
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 7000);
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
 
     try {
       const response = await fetch('/api/audit', {

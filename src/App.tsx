@@ -131,6 +131,12 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator && window.isSecureContext) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+  }, []);
+
   const handleToggleFullscreen = async () => {
     try {
       if (!document.fullscreenElement) {

@@ -146,7 +146,9 @@ export interface AuditAdjustmentAction {
     | 'CAP_PERSONNEL_DURATION'
     | 'ADJUST_OVERHEAD_PERCENT'
     | 'ADJUST_PPN_PERCENT'
-    | 'DEDUPLICATE_NON_PERSONNEL';
+    | 'DEDUPLICATE_NON_PERSONNEL'
+    | 'REDUCE_EXCESS_HEADCOUNT'
+    | 'ADJUST_NON_PERSONNEL_QTY';
   targetId?: string;
   title: string;
   rationale: string;

@@ -231,6 +231,14 @@ export function runDeterministicAudit(
 
     // Check for excessive managerial headcount relative to project scale
     if (isManagerial && group.totalHeadcount > 2 && profile.durationMonths <= 6) {
+      const excessHeadcount = group.totalHeadcount - 2;
+      const activeRate =
+        group.rows[0].overrideRate !== null
+          ? group.rows[0].overrideRate
+          : Math.round(group.rows[0].standardRate * profile.locationFactor);
+      const excessDirectCost = excessHeadcount * group.rows[0].durationMonths * activeRate;
+      const excessGrandDelta = Math.round(excessDirectCost * combinedTaxOverheadMult);
+
       findings.push({
         id: `finding-excess-manager-${group.roleId}`,
         severity: 'WARNING',
@@ -241,6 +249,20 @@ export function runDeterministicAudit(
         technicalContextJustification:
           'Pastikan alokasi manajerial sebanding dengan kompleksitas proyek dan jumlah tim pengembang (developer/analyst) di lapangan.',
         deterministicMetric: `Kepala Skuadron Manajerial: ${group.totalHeadcount} Orang · ${formatNumberID(group.totalManMonths, 1)} OB`,
+      });
+
+      adjustments.push({
+        id: `adj-excess-manager-${group.roleId}`,
+        actionType: 'REDUCE_EXCESS_HEADCOUNT',
+        targetId: group.rows[0].id,
+        title: `Normalisasi Jumlah Personel Peran "${group.roleName}" ke Batas Wajar (2 Orang)`,
+        rationale: `Menyesuaikan alokasi tenaga manajerial dari ${group.totalHeadcount} orang ke 2 orang proporsional sesuai durasi proyek ${profile.durationMonths} bulan, menghasilkan efisiensi anggaran tanpa mengurangi tim teknis inti.`,
+        regulationCitation: 'Perlem LKPP No. 12 Tahun 2021 — Efisiensi Anggaran',
+        currentValueLabel: `${group.totalHeadcount} Orang (${formatNumberID(group.totalManMonths, 1)} OB)`,
+        recommendedValueLabel: '2 Orang (Proporsional)',
+        recommendedNumericValue: 2,
+        exactDirectCostDelta: -excessDirectCost,
+        exactGrandTotalDelta: -excessGrandDelta,
       });
     }
   });
@@ -506,6 +528,78 @@ export function runDeterministicAudit(
     }
   });
 
+  // 8B. Independent Non-Personnel Item Volume & Unit Price Audit (Independent of Complexity Score)
+  nonPersonnelItems.forEach((np) => {
+    const unitLower = (np.unit || '').toLowerCase();
+    const qty = np.quantity;
+    let isAbnormal = false;
+    let reasonText = '';
+    let recommendedQty = 1;
+
+    if (unitLower.includes('tahun') && qty > 3) {
+      isAbnormal = true;
+      recommendedQty = Math.max(1, Math.ceil(profile.durationMonths / 12));
+      reasonText = `Volume ${qty} ${np.unit} dinilai sangat tidak wajar (melebihi batas wajar 3 untuk item berbasis tahun).`;
+    } else if (unitLower.includes('paket') && qty > 5) {
+      isAbnormal = true;
+      recommendedQty = 2;
+      reasonText = `Volume ${qty} ${np.unit} pada komponen "${np.itemName}" melampaui batas kewajaran operasional (maksimal 5 paket).`;
+    } else if (unitLower.includes('kegiatan') && qty > 6) {
+      isAbnormal = true;
+      recommendedQty = 3;
+      reasonText = `Volume ${qty} ${np.unit} pada "${np.itemName}" dinilai terlalu besar untuk satu siklus proyek.`;
+    } else if (unitLower.includes('bulan') && qty > Math.max(24, profile.durationMonths * 2)) {
+      isAbnormal = true;
+      recommendedQty = profile.durationMonths;
+      reasonText = `Volume ${qty} ${np.unit} pada "${np.itemName}" melampaui durasi proyek (${profile.durationMonths} bulan).`;
+    }
+
+    if (isAbnormal) {
+      const excessQty = qty - recommendedQty;
+      const directDelta = excessQty * np.unitPrice;
+      const grandDelta = Math.round(directDelta * combinedTaxOverheadMult);
+
+      findings.push({
+        id: `finding-np-abnormal-${np.id}`,
+        severity: 'CRITICAL',
+        category: 'VOLUME_DURASI',
+        title: `Volume Tidak Wajar pada Komponen Non-Personel: "${np.itemName}" (${qty} ${np.unit})`,
+        diagnosis: `${reasonText} Mengakibatkan pembengkakan biaya langsung sebesar ${formatIDR(directDelta)} (potensi ketidakefisienan HPS/RAB).`,
+        regulationCitation: 'Perlem LKPP No. 12 Tahun 2021 — Prinsip Kewajaran Volume & Harga Satuan HPS',
+        technicalContextJustification:
+          'Koreksi volume non-personel ke batas proporsional memastikan penyusunan anggaran sesuai kebutuhan riil operasional.',
+        deterministicMetric: `Volume Saat Ini: ${qty} ${np.unit} · Rekomendasi: ${recommendedQty} ${np.unit}`,
+      });
+
+      adjustments.push({
+        id: `adj-np-abnormal-${np.id}`,
+        actionType: 'ADJUST_NON_PERSONNEL_QTY',
+        targetId: np.id,
+        title: `Koreksi Volume "${np.itemName}" ke Batas Wajar (${recommendedQty} ${np.unit})`,
+        rationale: `Menyesuaikan volume item "${np.itemName}" dari ${qty} menjadi ${recommendedQty} ${np.unit} sesuai skala riil kebutuhan proyek.`,
+        regulationCitation: 'Perlem LKPP No. 12 Tahun 2021',
+        currentValueLabel: `${qty} ${np.unit} (${formatIDR(np.quantity * np.unitPrice)})`,
+        recommendedValueLabel: `${recommendedQty} ${np.unit} (${formatIDR(recommendedQty * np.unitPrice)})`,
+        recommendedNumericValue: recommendedQty,
+        exactDirectCostDelta: -directDelta,
+        exactGrandTotalDelta: -grandDelta,
+      });
+    }
+
+    if (np.unitPrice > 200000000 && !isAbnormal) {
+      findings.push({
+        id: `finding-np-highprice-${np.id}`,
+        severity: 'WARNING',
+        category: 'REGULASI_TARIF',
+        title: `Harga Satuan Tinggi pada "${np.itemName}" (${formatIDR(np.unitPrice)} / ${np.unit})`,
+        diagnosis: `Komponen "${np.itemName}" memiliki harga satuan di atas Rp 200 Juta per unit yang memerlukan verifikasi dokumen pendukung (E-Katalog LKPP atau survei harga pasar resmi).`,
+        regulationCitation: 'Perpres No. 12 Tahun 2021 Pasal 26 — Survei Harga Pasar & E-Katalog',
+        technicalContextJustification: 'Pastikan spesifikasi teknis dan garansi sepadan dengan nilai satuan.',
+        deterministicMetric: `Harga Satuan: ${formatIDR(np.unitPrice)}`,
+      });
+    }
+  });
+
   // 9. Check Cybersecurity & QA Readiness for High/Strategic Complexity Projects
   const isHighOrStrategic =
     profile.complexity.startsWith('Tinggi') ||
@@ -639,6 +733,28 @@ export function applyAuditAdjustmentsToState(
         ...nextFinancials,
         ppnPercent: adj.recommendedNumericValue,
       };
+    } else if (adj.actionType === 'REDUCE_EXCESS_HEADCOUNT') {
+      nextPersonnel = nextPersonnel.map((p) => {
+        const lower = p.roleName.toLowerCase();
+        if (
+          p.id === adj.targetId ||
+          p.roleId === adj.targetId ||
+          lower.includes('project manager') ||
+          lower.includes('team lead')
+        ) {
+          return {
+            ...p,
+            headcount: Math.min(p.headcount, adj.recommendedNumericValue || 2),
+          };
+        }
+        return p;
+      });
+    } else if (adj.actionType === 'ADJUST_NON_PERSONNEL_QTY' && adj.targetId) {
+      nextNonPersonnel = nextNonPersonnel.map((np) =>
+        np.id === adj.targetId
+          ? { ...np, quantity: adj.recommendedNumericValue }
+          : np
+      );
     } else if (adj.actionType === 'DEDUPLICATE_NON_PERSONNEL' && adj.targetId) {
       const isNp = nextNonPersonnel.some((np) => np.id === adj.targetId);
       if (isNp) {
