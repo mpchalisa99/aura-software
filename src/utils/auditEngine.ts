@@ -135,6 +135,43 @@ export function runDeterministicAudit(
     deterministicMetric: `Skor Kompleksitas: ${complexityAssessment.complexityScore}/100 · Volume: ${formatNumberID(summary.totalManMonths, 1)} OB · Biaya Langsung: ${formatIDR(summary.directCostSubtotal)}`,
   });
 
+  // 1B. ABSOLUTE HEADCOUNT & MAN-MONTH (OB) CEILING VALIDATION (Unconditional of Complexity Score)
+  const globalHeadcount = summary.totalPersonnelHeadcount;
+  const globalManMonths = summary.totalManMonths;
+
+  if (globalHeadcount > 40 || globalManMonths > 1000) {
+    const excessMmDelta = globalManMonths - 600;
+    const avgRatePerMm = summary.totalPersonnelCost / (globalManMonths || 1);
+    const directCostDelta = excessMmDelta * avgRatePerMm;
+    const grandTotalDelta = Math.round(directCostDelta * combinedTaxOverheadMult);
+
+    findings.push({
+      id: 'finding-overstaffing-ceiling',
+      severity: 'CRITICAL',
+      category: 'VOLUME_DURASI',
+      title: `ANOMALI KRITIS / OVER-STAFFING (NON-COMPLIANT): Kapasitas Tim Melampaui Batas Atas (Ceiling) Wajar`,
+      diagnosis: `Total alokasi personel mencapai ${globalHeadcount} orang dengan beban ${formatNumberID(globalManMonths, 1)} Man-Month (OB), sangat jauh melampaui batas atas kewajaran proyek sistem informasi/militer (maksimal 35–40 personel / 1.000 OB), meskipun tingkat kompleksitas proyek bernilai tinggi (100/100). Hal ini dikategorikan sebagai penggelembungan anggaran (over-staffing).`,
+      regulationCitation: 'Perlem LKPP No. 12 Tahun 2021 & Standar Efisiensi Belanja Pengadaan Perangkat Lunak Pemerintah',
+      technicalContextJustification:
+        'Skor kompleksitas teknis 100/100 mencerminkan tingkat kerumitan arsitektur (seperti sistem C4ISR atau keamanan siber berlapis), namun tetap memerlukan komposisi tenaga ahli yang proporsional dan rasional (ideal ~25-35 ahli), bukan penambahan headcount masif yang tidak terkelola.',
+      deterministicMetric: `Total Tim: ${globalHeadcount} Orang · Total OB: ${formatNumberID(globalManMonths, 1)} OB · Batas Wajar Maks: 35 Orang / 900 OB`,
+    });
+
+    adjustments.push({
+      id: 'adj-overstaffing-ceiling',
+      actionType: 'REDUCE_EXCESS_HEADCOUNT',
+      targetId: personnelItems[0]?.id || 'all',
+      title: 'Normalisasi Kapasitas Tim ke Batas Atas Rasional (Kompilasi Optimum 30 Ahli)',
+      rationale: `Memangkas kelebihan kapasitas dan duplikasi tenaga ahli dari ${globalHeadcount} orang (${formatNumberID(globalManMonths, 1)} OB) ke komposisi optimum rasional (~30 tenaga ahli), menghasilkan efisiensi anggaran signifikan sesuai standar HPS LKPP.`,
+      regulationCitation: 'Perlem LKPP No. 12 Tahun 2021',
+      currentValueLabel: `${globalHeadcount} Orang (${formatNumberID(globalManMonths, 1)} OB)`,
+      recommendedValueLabel: '30 Orang Optimum (Batas Wajar)',
+      recommendedNumericValue: 4,
+      exactDirectCostDelta: -directCostDelta,
+      exactGrandTotalDelta: -grandTotalDelta,
+    });
+  }
+
   // 2. AGGREGATION & ROLE DUPLICATION / EXCESSIVE QUANTITY CHECK (Project Manager / Team Lead / etc.)
   const roleGroupMap = new Map<
     string,
@@ -229,40 +266,84 @@ export function runDeterministicAudit(
       });
     }
 
-    // Check for excessive managerial headcount relative to project scale
-    if (isManagerial && group.totalHeadcount > 2 && profile.durationMonths <= 6) {
-      const excessHeadcount = group.totalHeadcount - 2;
+    // Check for absolute per-role headcount hard caps (Managerial: >2 warn, >4 crit; Technical: >8 warn, >15 crit)
+    const maxAllowedCount = isManagerial ? 2 : 8;
+    const criticalAllowedCount = isManagerial ? 4 : 15;
+
+    if (group.totalHeadcount > maxAllowedCount) {
+      const isCrit = group.totalHeadcount > criticalAllowedCount;
+      const targetCount = isManagerial ? 2 : 4;
+      const excessCount = group.totalHeadcount - targetCount;
       const activeRate =
         group.rows[0].overrideRate !== null
           ? group.rows[0].overrideRate
           : Math.round(group.rows[0].standardRate * profile.locationFactor);
-      const excessDirectCost = excessHeadcount * group.rows[0].durationMonths * activeRate;
+      const excessDirectCost = excessCount * group.rows[0].durationMonths * activeRate;
       const excessGrandDelta = Math.round(excessDirectCost * combinedTaxOverheadMult);
 
       findings.push({
-        id: `finding-excess-manager-${group.roleId}`,
-        severity: 'WARNING',
+        id: `finding-hardcap-role-${group.roleId}`,
+        severity: isCrit ? 'CRITICAL' : 'WARNING',
         category: 'VOLUME_DURASI',
-        title: `Jumlah Personel Peran Manajerial "${group.roleName}" (${group.totalHeadcount} Orang) Cukup Tinggi untuk Durasi ${profile.durationMonths} Bulan`,
-        diagnosis: `Alokasi ${group.totalHeadcount} orang pada posisi ${group.roleName} dengan total ${formatNumberID(group.totalManMonths, 1)} OB (${formatIDR(group.totalCost)}) perlu diverifikasi ulang terhadap skala dan efektivitas koordinasi tim.`,
-        regulationCitation: 'Pedoman Penyusunan KAK & Efisiensi Pengadaan Jasa Konsultansi TI',
+        title: `${isCrit ? 'ANOMALI KRITIS / OVER-STAFFING' : 'PERINGATAN'} — Pengelembungan Personel Peran "${group.roleName}" (${group.totalHeadcount} Orang)`,
+        diagnosis: `Alokasi personel pada peran "${group.roleName}" mencapai ${group.totalHeadcount} orang (${formatNumberID(group.totalManMonths, 1)} OB), melampaui batas atas wajar (${isCrit ? 'kritis' : 'maksimal'} ${targetCount}–${maxAllowedCount} orang). Kelebihan jumlah tenaga ahli paralel pada satu peran melanggar prinsip efisiensi dan menyebabkan inefisiensi koordinasi (Brooks's Law).`,
+        regulationCitation: 'Perlem LKPP No. 12 Tahun 2021 — Prinsip Kewajaran Beban Kerja & Efisiensi Pengadaan',
         technicalContextJustification:
-          'Pastikan alokasi manajerial sebanding dengan kompleksitas proyek dan jumlah tim pengembang (developer/analyst) di lapangan.',
-        deterministicMetric: `Kepala Skuadron Manajerial: ${group.totalHeadcount} Orang · ${formatNumberID(group.totalManMonths, 1)} OB`,
+          'Kompleksitas tinggi membenarkan kualifikasi Senior/Lead, namun bukan penambahan ratusan tenaga ahli paralel pada satu peran.',
+        deterministicMetric: `Jumlah Saat Ini: ${group.totalHeadcount} Orang · Batas Wajar: ${targetCount} Orang`,
       });
 
       adjustments.push({
-        id: `adj-excess-manager-${group.roleId}`,
+        id: `adj-hardcap-role-${group.roleId}`,
         actionType: 'REDUCE_EXCESS_HEADCOUNT',
         targetId: group.rows[0].id,
-        title: `Normalisasi Jumlah Personel Peran "${group.roleName}" ke Batas Wajar (2 Orang)`,
-        rationale: `Menyesuaikan alokasi tenaga manajerial dari ${group.totalHeadcount} orang ke 2 orang proporsional sesuai durasi proyek ${profile.durationMonths} bulan, menghasilkan efisiensi anggaran tanpa mengurangi tim teknis inti.`,
-        regulationCitation: 'Perlem LKPP No. 12 Tahun 2021 — Efisiensi Anggaran',
-        currentValueLabel: `${group.totalHeadcount} Orang (${formatNumberID(group.totalManMonths, 1)} OB)`,
-        recommendedValueLabel: '2 Orang (Proporsional)',
-        recommendedNumericValue: 2,
+        title: `Normalisasi Jumlah Peran "${group.roleName}" ke Batas Wajar (${targetCount} Orang)`,
+        rationale: `Menyesuaikan alokasi personel dari ${group.totalHeadcount} orang menjadi ${targetCount} orang pada peran "${group.roleName}".`,
+        regulationCitation: 'Perlem LKPP No. 12 Tahun 2021',
+        currentValueLabel: `${group.totalHeadcount} Orang (${formatIDR(group.totalCost)})`,
+        recommendedValueLabel: `${targetCount} Orang (Proporsional)`,
+        recommendedNumericValue: targetCount,
         exactDirectCostDelta: -excessDirectCost,
         exactGrandTotalDelta: -excessGrandDelta,
+      });
+    }
+  });
+
+  // Check individual row duration exceeding project duration
+  personnelItems.forEach((item) => {
+    if (item.durationMonths > profile.durationMonths) {
+      const excessMonths = item.durationMonths - profile.durationMonths;
+      const activeRate =
+        item.overrideRate !== null
+          ? item.overrideRate
+          : Math.round(item.standardRate * profile.locationFactor);
+      const excessMm = excessMonths * item.headcount;
+      const directDelta = excessMm * activeRate;
+      const grandDelta = Math.round(directDelta * combinedTaxOverheadMult);
+
+      findings.push({
+        id: `finding-dur-exceed-${item.id}`,
+        severity: 'CRITICAL',
+        category: 'VOLUME_DURASI',
+        title: `ANOMALI DURASI PENUGASAN: "${item.roleName}" (${item.durationMonths} Bulan > Proyek ${profile.durationMonths} Bulan)`,
+        diagnosis: `Durasi penugasan personel pada peran "${item.roleName}" melampaui jadwal total pelaksanaan proyek utama (${profile.durationMonths} bulan).`,
+        regulationCitation: 'Perlem LKPP No. 12 Tahun 2021 — Kesesuaian KAK & Kontrak',
+        technicalContextJustification: 'Durasi penugasan tenaga ahli wajib diselaraskan dengan masa kontrak proyek.',
+        deterministicMetric: `Kelebihan Durasi: ${excessMonths} Bulan · Kelebihan OB: ${formatNumberID(excessMm, 1)}`,
+      });
+
+      adjustments.push({
+        id: `adj-dur-exceed-${item.id}`,
+        actionType: 'CAP_PERSONNEL_DURATION',
+        targetId: item.id,
+        title: `Selaraskan Durasi "${item.roleName}" ke Batas Proyek (${profile.durationMonths} Bulan)`,
+        rationale: `Menyesuaikan durasi penugasan dari ${item.durationMonths} bulan menjadi ${profile.durationMonths} bulan.`,
+        regulationCitation: 'Perlem LKPP No. 12 Tahun 2021',
+        currentValueLabel: `${item.durationMonths} Bulan`,
+        recommendedValueLabel: `${profile.durationMonths} Bulan`,
+        recommendedNumericValue: profile.durationMonths,
+        exactDirectCostDelta: -directDelta,
+        exactGrandTotalDelta: -grandDelta,
       });
     }
   });
