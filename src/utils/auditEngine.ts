@@ -87,9 +87,9 @@ export function computeTechnicalComplexityAssessment(
 
 /**
  * Deterministic Audit Engine:
- * - Zero hallucinated numbers: every Rupiah figure is computed directly from the active items & regulation table.
- * - Understands deep technical complexity: never flags justified high-complexity workloads, special integrations, or layered security as waste.
- * - No aggressive/unrealistic cuts: only recommends measured adjustments for rates exceeding regulation ceilings, durations exceeding project timeline, duplicate entries, or out-of-range overhead/tax parameters.
+ * - Aggregates and evaluates role duplication & excessive headcount per role (e.g. Project Manager / Team Lead).
+ * - Analyzes team composition ratio (Managerial vs Technical vs Support).
+ * - Suggests measured consolidation without blind cuts.
  */
 export function runDeterministicAudit(
   profile: ProjectProfile,
@@ -98,7 +98,7 @@ export function runDeterministicAudit(
   financials: FinancialParameters,
   regulationConfig: RegulationConfigPayload,
   source: 'AI_SERVER_AUDIT' | 'LOCAL_HEURISTIC_ENGINE' = 'LOCAL_HEURISTIC_ENGINE',
-  modelUsed = 'Deterministic-Rule-Engine-v2.6'
+  modelUsed = 'Deterministic-Rule-Engine-v2.8'
 ): AuditReportResult {
   const summary = calculateProjectSummary(
     personnelItems,
@@ -121,7 +121,7 @@ export function runDeterministicAudit(
   const ppnMult = 1 + Math.max(0, financials.ppnPercent) / 100;
   const combinedTaxOverheadMult = overheadMult * ppnMult;
 
-  // 1. Technical Complexity & Workload Justification Check (Always included to confirm deep technical context)
+  // 1. Technical Complexity & Workload Justification Check
   findings.push({
     id: 'finding-tech-complexity',
     severity: 'COMPLIANT',
@@ -135,7 +135,146 @@ export function runDeterministicAudit(
     deterministicMetric: `Skor Kompleksitas: ${complexityAssessment.complexityScore}/100 · Volume: ${formatNumberID(summary.totalManMonths, 1)} OB · Biaya Langsung: ${formatIDR(summary.directCostSubtotal)}`,
   });
 
-  // 2. Check Personnel Tariff Overrides against Official Regulation Rates
+  // 2. AGGREGATION & ROLE DUPLICATION / EXCESSIVE QUANTITY CHECK (Project Manager / Team Lead / etc.)
+  const roleGroupMap = new Map<
+    string,
+    {
+      roleId: string;
+      roleName: string;
+      rows: PersonnelAllocationItem[];
+      totalHeadcount: number;
+      totalManMonths: number;
+      totalCost: number;
+    }
+  >();
+
+  personnelItems.forEach((item) => {
+    const key = item.roleId || item.roleName.trim().toLowerCase();
+    const mm = item.headcount * item.durationMonths;
+    const activeRate =
+      item.overrideRate !== null
+        ? item.overrideRate
+        : Math.round(item.standardRate * profile.locationFactor);
+    const cost = mm * activeRate;
+
+    if (!roleGroupMap.has(key)) {
+      roleGroupMap.set(key, {
+        roleId: item.roleId,
+        roleName: item.roleName,
+        rows: [item],
+        totalHeadcount: item.headcount,
+        totalManMonths: mm,
+        totalCost: cost,
+      });
+    } else {
+      const existing = roleGroupMap.get(key)!;
+      existing.rows.push(item);
+      existing.totalHeadcount += item.headcount;
+      existing.totalManMonths += mm;
+      existing.totalCost += cost;
+    }
+  });
+
+  // Evaluate each aggregated role group for duplication or excessive headcount
+  let technicalHeadcount = 0;
+  let technicalManMonths = 0;
+  let managerialHeadcount = 0;
+  let managerialManMonths = 0;
+
+  roleGroupMap.forEach((group) => {
+    const lowerName = group.roleName.toLowerCase();
+    const isManagerial =
+      lowerName.includes('project manager') ||
+      lowerName.includes('team lead') ||
+      lowerName.includes('scrum master') ||
+      lowerName.includes('lead');
+
+    if (isManagerial) {
+      managerialHeadcount += group.totalHeadcount;
+      managerialManMonths += group.totalManMonths;
+    } else if (!lowerName.includes('technical writer')) {
+      technicalHeadcount += group.totalHeadcount;
+      technicalManMonths += group.totalManMonths;
+    }
+
+    // Check for explicit role duplication (multiple rows for the exact same role)
+    if (group.rows.length > 1) {
+      const dupDirectCost = group.totalCost;
+      const dupGrandDelta = Math.round(dupDirectCost * combinedTaxOverheadMult);
+
+      findings.push({
+        id: `finding-dup-role-${group.roleId}`,
+        severity: 'CRITICAL',
+        category: 'VOLUME_DURASI',
+        title: `Indikasi Duplikasi Baris Peran "${group.roleName}" (${group.rows.length} Baris Terakumulasi)`,
+        diagnosis: `Peran manajerial/koordinasi "${group.roleName}" muncul terpecah dalam ${group.rows.length} baris terpisah dengan total akumulasi ${group.totalHeadcount} orang, ${formatNumberID(group.totalManMonths, 1)} OB, dan total biaya ${formatIDR(group.totalCost)}. Hal ini berpotensi pencatatan ganda atau alokasi pengawas yang tidak terpadu.`,
+        regulationCitation: 'Perlem LKPP No. 12 Tahun 2021 — Prinsip Akuntabilitas & Efisiensi Struktur Tim HPS',
+        technicalContextJustification:
+          'Konsolidasi baris peran yang terduplikasi menjadi satu entri terstruktur dengan volume gabungan yang wajar memastikan kejelasan penugasan.',
+        deterministicMetric: `Akumulasi: ${group.rows.length} Baris · ${group.totalHeadcount} Orang · ${formatNumberID(group.totalManMonths, 1)} OB · Total: ${formatIDR(group.totalCost)}`,
+      });
+
+      adjustments.push({
+        id: `adj-consolidate-role-${group.roleId}`,
+        actionType: 'DEDUPLICATE_NON_PERSONNEL', // Handled via role consolidation
+        targetId: group.roleId,
+        title: `Konsolidasikan Baris Terduplikasi Peran "${group.roleName}" Menjadi 1 Entri Terstruktur`,
+        rationale: `Menggabungkan ${group.rows.length} baris peran "${group.roleName}" menjadi satu entri dengan total headcount terakumulasi (${group.totalHeadcount} orang) tanpa mengubah total biaya langsung atau mengorbankan tim teknis.`,
+        regulationCitation: 'Perlem LKPP No. 12 Tahun 2021',
+        currentValueLabel: `${group.rows.length} Baris Terpecah (${formatIDR(group.totalCost)})`,
+        recommendedValueLabel: '1 Entri Terkonsolidasi',
+        recommendedNumericValue: 0,
+        exactDirectCostDelta: 0,
+        exactGrandTotalDelta: 0,
+      });
+    }
+
+    // Check for excessive managerial headcount relative to project scale
+    if (isManagerial && group.totalHeadcount > 2 && profile.durationMonths <= 6) {
+      findings.push({
+        id: `finding-excess-manager-${group.roleId}`,
+        severity: 'WARNING',
+        category: 'VOLUME_DURASI',
+        title: `Jumlah Personel Peran Manajerial "${group.roleName}" (${group.totalHeadcount} Orang) Cukup Tinggi untuk Durasi ${profile.durationMonths} Bulan`,
+        diagnosis: `Alokasi ${group.totalHeadcount} orang pada posisi ${group.roleName} dengan total ${formatNumberID(group.totalManMonths, 1)} OB (${formatIDR(group.totalCost)}) perlu diverifikasi ulang terhadap skala dan efektivitas koordinasi tim.`,
+        regulationCitation: 'Pedoman Penyusunan KAK & Efisiensi Pengadaan Jasa Konsultansi TI',
+        technicalContextJustification:
+          'Pastikan alokasi manajerial sebanding dengan kompleksitas proyek dan jumlah tim pengembang (developer/analyst) di lapangan.',
+        deterministicMetric: `Kepala Skuadron Manajerial: ${group.totalHeadcount} Orang · ${formatNumberID(group.totalManMonths, 1)} OB`,
+      });
+    }
+  });
+
+  // 3. TEAM COMPOSITION RATIO ANALYSIS (Managerial vs Technical vs Support)
+  const totalTeamHeadcount = personnelItems.reduce((acc, p) => acc + p.headcount, 0) || 1;
+  const managerialRatio = (managerialHeadcount / totalTeamHeadcount) * 100;
+
+  if (managerialHeadcount >= Math.max(2, technicalHeadcount * 0.75) && totalTeamHeadcount >= 4) {
+    findings.push({
+      id: 'finding-team-composition-topheavy',
+      severity: 'WARNING',
+      category: 'VOLUME_DURASI',
+      title: `Analisis Rasio Komposisi Tim: Struktur Peran Manajerial Terlalu Gemuk (${managerialHeadcount} Manajerial vs ${technicalHeadcount} Teknis)`,
+      diagnosis: `Proporsi peran manajerial dan koordinasi mencapai ${managerialRatio.toFixed(1)}% dari total tenaga ahli. Sesuai praktik rekayasa perangkat lunak standar, struktur tim ideal menempatkan mayoritas alokasi pada peran teknis & produksi (Developer, Solution Architect, Analis, QA, DevOps) agar eksekusi pengembangan berjalan efektif dan tidak top-heavy.`,
+      regulationCitation: 'Standar Produktivitas Tim Pengembang Perangkat Lunak & Pedoman HPS LKPP',
+      technicalContextJustification:
+        'Penyesuaian komposisi tim menjadi lebih ramping di sisi pengawas atau konsolidasi peran pimpinan proyek meningkatkan efisiensi eksekusi teknis.',
+      deterministicMetric: `Manajerial: ${managerialHeadcount} Orang · Teknis: ${technicalHeadcount} Orang · Rasio: ${managerialRatio.toFixed(1)}%`,
+    });
+  } else {
+    findings.push({
+      id: 'finding-team-composition-compliant',
+      severity: 'COMPLIANT',
+      category: 'VOLUME_DURASI',
+      title: 'Analisis Rasio Komposisi Tim Pengembangan: Proporsi Seimbang (Manajerial vs Teknis)',
+      diagnosis: `Komposisi tenaga ahli menunjukkan keseimbangan proporsional antara peran manajerial/koordinasi (${managerialHeadcount} orang) dan tim eksekusi teknis & produksi (${technicalHeadcount} orang).`,
+      regulationCitation: 'Standar Rekayasa Perangkat Lunak Nasional',
+      technicalContextJustification: 'Struktur tim mendukung pendelegasian tugas dan kecepatan eksekusi.',
+      deterministicMetric: `Rasio Komposisi Tim: PROPORSIONAL (${managerialHeadcount} Manajerial / ${technicalHeadcount} Teknis)`,
+    });
+  }
+
+  // 4. Check Personnel Tariff Overrides against Official Regulation Rates
   personnelItems.forEach((item) => {
     const effectiveStandard = Math.round(item.standardRate * profile.locationFactor);
     if (item.overrideRate !== null && item.overrideRate > effectiveStandard) {
@@ -175,7 +314,7 @@ export function runDeterministicAudit(
     }
   });
 
-  // 3. Check Personnel Duration Exceeding Project Duration
+  // 5. Check Personnel Duration Exceeding Project Duration
   personnelItems.forEach((item) => {
     if (item.durationMonths > profile.durationMonths) {
       const excessMonths = item.durationMonths - profile.durationMonths;
@@ -215,7 +354,7 @@ export function runDeterministicAudit(
     }
   });
 
-  // 4. Check Overhead & Profit Percentage against Perpres/LKPP range (10% - 15%)
+  // 6. Check Overhead & Profit Percentage against Perpres/LKPP range (10% - 15%)
   const [minOverhead, maxOverhead] = regulationConfig.recommendedOverheadRange;
   const isSwakelolaTipe1 = profile.procurementScheme.includes('Swakelola Tipe I');
 
@@ -290,7 +429,7 @@ export function runDeterministicAudit(
     });
   }
 
-  // 5. Check PPN Tax compliance
+  // 7. Check PPN Tax compliance
   const defaultPpn = regulationConfig.defaultPpnPercent || 11;
   if (
     !isSwakelolaTipe1 &&
@@ -328,7 +467,7 @@ export function runDeterministicAudit(
     });
   }
 
-  // 6. Check Duplicate Non-Personnel Items
+  // 8. Check Duplicate Non-Personnel Items
   const seenNpKeys = new Map<string, NonPersonnelCostItem>();
   nonPersonnelItems.forEach((np) => {
     const normKey = `${np.category}::${np.itemName.trim().toLowerCase()}`;
@@ -367,7 +506,7 @@ export function runDeterministicAudit(
     }
   });
 
-  // 7. Check Cybersecurity & QA Readiness for High/Strategic Complexity Projects
+  // 9. Check Cybersecurity & QA Readiness for High/Strategic Complexity Projects
   const isHighOrStrategic =
     profile.complexity.startsWith('Tinggi') ||
     profile.complexity.startsWith('Kritis') ||
@@ -501,7 +640,35 @@ export function applyAuditAdjustmentsToState(
         ppnPercent: adj.recommendedNumericValue,
       };
     } else if (adj.actionType === 'DEDUPLICATE_NON_PERSONNEL' && adj.targetId) {
-      nextNonPersonnel = nextNonPersonnel.filter((np) => np.id !== adj.targetId);
+      const isNp = nextNonPersonnel.some((np) => np.id === adj.targetId);
+      if (isNp) {
+        nextNonPersonnel = nextNonPersonnel.filter((np) => np.id !== adj.targetId);
+      } else {
+        const roleIdMatch = adj.targetId.replace('role-', '');
+        const roleGroups = new Map<string, PersonnelAllocationItem[]>();
+        nextPersonnel.forEach((p) => {
+          const key = p.roleId || p.roleName.trim().toLowerCase();
+          if (!roleGroups.has(key)) roleGroups.set(key, [p]);
+          else roleGroups.get(key)!.push(p);
+        });
+
+        const consolidated: PersonnelAllocationItem[] = [];
+        roleGroups.forEach((groupRows, key) => {
+          if (groupRows.length > 1 && (key.includes(roleIdMatch) || groupRows.some(g => g.roleId === adj.targetId))) {
+            const first = groupRows[0];
+            const totalHeadcount = groupRows.reduce((sum, r) => sum + r.headcount, 0);
+            const maxDuration = Math.max(...groupRows.map((r) => r.durationMonths));
+            consolidated.push({
+              ...first,
+              headcount: totalHeadcount,
+              durationMonths: maxDuration,
+            });
+          } else {
+            consolidated.push(...groupRows);
+          }
+        });
+        nextPersonnel = consolidated;
+      }
     }
   }
 

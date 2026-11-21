@@ -23,6 +23,7 @@ import {
   ProjectProfile,
   RegulationConfigPayload,
 } from '../types/aura';
+import { runDeterministicAudit } from '../utils/auditEngine';
 import { formatIDR, formatTimestampID } from '../utils/formatters';
 
 interface SystemAuditPanelProps {
@@ -54,6 +55,9 @@ export const SystemAuditPanel: React.FC<SystemAuditPanelProps> = ({
     setIsAnalyzingAi(true);
     setAiStatusNotice(null);
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 7000);
+
     try {
       const response = await fetch('/api/audit', {
         method: 'POST',
@@ -67,7 +71,10 @@ export const SystemAuditPanel: React.FC<SystemAuditPanelProps> = ({
           financials,
           regulationConfig,
         }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       const data = await response.json();
 
@@ -83,14 +90,33 @@ export const SystemAuditPanel: React.FC<SystemAuditPanelProps> = ({
             'Menggunakan hasil analisis Mesin Heuristik Deterministik Lokal Terverifikasi.'
         );
       } else {
+        const fallback = runDeterministicAudit(
+          profile,
+          personnelItems,
+          nonPersonnelItems,
+          financials,
+          regulationConfig,
+          'LOCAL_HEURISTIC_ENGINE'
+        );
+        onUpdateAuditReport(fallback);
         setAiStatusNotice(
           data?.error ||
-            'Endpoint /api/audit tidak merespons. Menampilkan hasil audit deterministik lokal.'
+            'Endpoint /api/audit merespons di luar format standar. Menampilkan hasil audit deterministik lokal.'
         );
       }
     } catch {
+      clearTimeout(timeoutId);
+      const fallback = runDeterministicAudit(
+        profile,
+        personnelItems,
+        nonPersonnelItems,
+        financials,
+        regulationConfig,
+        'LOCAL_HEURISTIC_ENGINE'
+      );
+      onUpdateAuditReport(fallback);
       setAiStatusNotice(
-        'Koneksi offline atau endpoint /api/audit tidak terjangkau. Menampilkan analisis deterministik lokal yang terkunci.'
+        'Koneksi /api/audit timeout (>7 detik) atau offline. Menampilkan hasil analisis deterministik lokal yang terkunci secara instan.'
       );
     } finally {
       setIsAnalyzingAi(false);
