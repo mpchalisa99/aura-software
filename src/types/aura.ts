@@ -183,3 +183,43 @@ export interface AuditReportResult {
     totalMeasuredSavings: number;
   };
 }
+
+export interface DraftEstimatePersonnel {
+  roleId: string;
+  roleName: string;
+  tier: string;
+  headcount: number;
+  durationMonths: number;
+  taskDescription: string;
+}
+
+export interface DraftEstimateNonPersonnel {
+  category: 'Lisensi' | 'Server / Cloud' | 'Integrasi API' | 'Security Testing' | 'Dokumentasi' | 'SLA & Pemeliharaan';
+  itemName: string;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  notes: string;
+}
+
+export interface DraftEstimatePayload {
+  projectName: string;
+  proposingUnit: string;
+  procurementScheme: string;
+  complexityLevel: string;
+  durationMonths: number;
+  locationFactor: number;
+  highComplexityModules: string[];
+  specialIntegrations: string[];
+  layeredSecurityStandards: string[];
+  personnel: DraftEstimatePersonnel[];
+  nonPersonnel: DraftEstimateNonPersonnel[];
+}
+
+export interface AssistantChatMessage {
+  id: string;
+  sender: 'user' | 'assistant';
+  timestamp: string;
+  reply: string;
+  draftEstimate?: DraftEstimatePayload;
+}

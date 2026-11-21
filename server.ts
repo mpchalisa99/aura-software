@@ -3,6 +3,7 @@ import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import auditHandler from './api/audit';
+import assistantHandler from './api/assistant';
 import { DEFAULT_REGULATION_CONFIG } from './src/data/defaultRegulations';
 
 async function startServer() {
@@ -23,6 +24,11 @@ async function startServer() {
   // Serverless-compatible AI & Deterministic Audit Endpoint
   app.all('/api/audit', async (req, res) => {
     await auditHandler(req, res);
+  });
+
+  // Serverless-compatible AI Assistant Chat & Estimator Endpoint
+  app.all('/api/assistant', async (req, res) => {
+    await assistantHandler(req, res);
   });
 
   if (process.env.NODE_ENV !== 'production') {

@@ -8,6 +8,7 @@ import {
   Activity,
   Award,
   BookOpen,
+  Bot,
   Calculator,
   Check,
   Compass,
@@ -29,6 +30,7 @@ import { CalculatorTab } from './components/CalculatorTab';
 import { HistoryTab } from './components/HistoryTab';
 import { RadarSyncModal } from './components/RadarSyncModal';
 import { RegulationTab } from './components/RegulationTab';
+import { AuraTacticalAssistant } from './components/AuraTacticalAssistant';
 import {
   DEFAULT_SHARED_APP_URL,
   ShareBarcodeModal,
@@ -46,10 +48,12 @@ import {
 import {
   AuditAdjustmentAction,
   AuditReportResult,
+  DraftEstimatePayload,
   FinancialParameters,
   NonPersonnelCostItem,
   PersonnelAllocationItem,
   ProjectProfile,
+  QualificationTier,
   RegulationConfigPayload,
   SavedSimulation,
   SyncStatus,
@@ -195,6 +199,56 @@ export default function App() {
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const [isRadarModalOpen, setIsRadarModalOpen] = useState(false);
   const [autoTriggerRadar, setAutoTriggerRadar] = useState(false);
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+
+  const handleApplyDraftEstimate = (draft: DraftEstimatePayload) => {
+    setProfile((prev) => ({
+      ...prev,
+      projectName: draft.projectName || prev.projectName,
+      proposingUnit: draft.proposingUnit || prev.proposingUnit,
+      procurementScheme: (draft.procurementScheme as any) || prev.procurementScheme,
+      complexity: (draft.complexityLevel as any) || prev.complexity,
+      durationMonths: draft.durationMonths || prev.durationMonths,
+      locationFactor: draft.locationFactor || prev.locationFactor,
+      highComplexityModules: draft.highComplexityModules || prev.highComplexityModules,
+      specialIntegrations: draft.specialIntegrations || prev.specialIntegrations,
+      layeredSecurityStandards: draft.layeredSecurityStandards || prev.layeredSecurityStandards,
+    }));
+
+    const mappedPersonnel: PersonnelAllocationItem[] = draft.personnel.map((p, idx) => {
+      const foundRole =
+        regulationConfig.roleTariffs.find((r) => r.id === p.roleId) ||
+        regulationConfig.roleTariffs[0];
+      const tier = (p.tier as QualificationTier) || 'Senior';
+      return {
+        id: `draft-p-${Date.now()}-${idx}`,
+        roleId: foundRole.id,
+        roleName: foundRole.roleName,
+        tier,
+        headcount: p.headcount,
+        durationMonths: p.durationMonths || draft.durationMonths,
+        standardRate: foundRole.rates[tier] ?? foundRole.rates.Senior,
+        overrideRate: null,
+        taskDescription: p.taskDescription,
+      };
+    });
+    setPersonnelItems(mappedPersonnel);
+
+    const mappedNonPersonnel: NonPersonnelCostItem[] = draft.nonPersonnel.map((np, idx) => ({
+      id: `draft-np-${Date.now()}-${idx}`,
+      category: np.category,
+      itemName: np.itemName,
+      quantity: np.quantity,
+      unit: np.unit,
+      unitPrice: np.unitPrice,
+      notes: np.notes,
+    }));
+    setNonPersonnelItems(mappedNonPersonnel);
+
+    setSyncNotice(`Draf estimasi "${draft.projectName}" berhasil dimuat ke Form Kalkulator.`);
+    setTimeout(() => setSyncNotice(null), 4500);
+    setIsAssistantOpen(false);
+  };
 
   // Active Project Calculation State
   const [profile, setProfile] = useState<ProjectProfile>(INITIAL_PROJECT_PROFILE);
@@ -611,8 +665,17 @@ export default function App() {
           })}
         </nav>
 
-        {/* Zone 3: 1 Primary Action */}
-        <div className="flex items-center shrink-0">
+        {/* Zone 3: Primary Actions */}
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setIsAssistantOpen(true)}
+            className="flex items-center gap-2 px-3 sm:px-4 py-2 text-xs font-semibold bg-gradient-to-r from-amber-400 to-amber-300 hover:from-amber-300 hover:to-amber-200 text-slate-950 shadow-[0_0_18px_rgba(245,158,11,0.35)] transition-all whitespace-nowrap shrink-0"
+          >
+            <Bot className="w-4 h-4" />
+            <span>AURA AI ESTIMATOR (CHAT)</span>
+          </button>
+
           <button
             type="button"
             onClick={() => {
@@ -1211,6 +1274,14 @@ export default function App() {
         grandTotalFormatted={formatIDR(summary.grandTotalEstimation)}
         isFullscreen={isFullscreen}
         onToggleFullscreen={handleToggleFullscreen}
+      />
+
+      {/* AURA TACTICAL AI ASSISTANT CHAT MODAL */}
+      <AuraTacticalAssistant
+        isOpen={isAssistantOpen}
+        onClose={() => setIsAssistantOpen(false)}
+        regulationConfig={regulationConfig}
+        onApplyDraftEstimate={handleApplyDraftEstimate}
       />
     </div>
   );
