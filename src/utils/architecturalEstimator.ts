@@ -654,12 +654,15 @@ export function classifyArchitecturalTier(userMsg: string): ArchitecturalTierMet
 }
 
 /**
- * Builds deterministic PersonnelAllocationItem[] and CalculationSummary for any DraftEstimatePayload
- * strictly using the active regulationConfig billing rates (zero hardcoded rates).
+ * Builds deterministic priced items and summary for a specific price mode:
+ * - 'floor': lowest allowable accumulation of direct personnel & non-personnel costs (lean tier mapping, lower quantity/price, overhead 10%).
+ * - 'standard': standard / middle accumulation (standard rates and recommended overhead).
+ * - 'ceiling': highest allowable HPS ceiling accumulation (upper tier mapping, full quantity/price, overhead 15%).
  */
-export function buildPricedItemsFromDraft(
+export function buildPricedItemsForPriceMode(
   draft: DraftEstimatePayload,
-  regulationConfig: RegulationConfigPayload
+  regulationConfig: RegulationConfigPayload,
+  priceMode: 'floor' | 'standard' | 'ceiling'
 ): {
   personnelItems: PersonnelAllocationItem[];
   nonPersonnelItems: NonPersonnelCostItem[];
@@ -676,16 +679,33 @@ export function buildPricedItemsFromDraft(
 
   const personnelItems: PersonnelAllocationItem[] = (draft.personnel || []).map((p, idx) => {
     const matchedRole = resolveRoleTariff(p.roleId, p.roleName, activeConfig);
-    const tier = normalizeQualificationTier(p.tier);
+    let tier: QualificationTier = normalizeQualificationTier(p.tier);
+
+    if (priceMode === 'floor') {
+      if (tier === 'Lead / Principal' || tier === 'Senior') tier = 'Middle';
+      else if (tier === 'Middle') tier = 'Junior';
+    } else if (priceMode === 'ceiling') {
+      if (tier === 'Junior') tier = 'Senior';
+      else if (tier === 'Middle') tier = 'Lead / Principal';
+      else tier = 'Lead / Principal';
+    }
+
     const standardRate = matchedRole.rates[tier] ?? matchedRole.rates.Middle;
-    const safeHeadcount = Math.max(1, Math.min(8, Math.round(p.headcount || 1)));
-    const safeDuration = Math.max(
+    let safeHeadcount = Math.max(1, Math.min(8, Math.round(p.headcount || 1)));
+    let safeDuration = Math.max(
       0.5,
       Math.min(projectDuration, Number(p.durationMonths) || projectDuration)
     );
 
+    if (priceMode === 'floor') {
+      safeDuration = Math.max(0.5, Number((safeDuration * 0.85).toFixed(1)));
+    } else if (priceMode === 'ceiling') {
+      safeHeadcount = Math.min(8, Math.max(safeHeadcount + 1, 3));
+      safeDuration = projectDuration;
+    }
+
     return {
-      id: `draft-p-${idx}-${matchedRole.id}`,
+      id: `draft-p-${priceMode}-${idx}-${matchedRole.id}`,
       roleId: matchedRole.id,
       roleName: matchedRole.roleName,
       tier,
@@ -697,22 +717,48 @@ export function buildPricedItemsFromDraft(
     };
   });
 
-  const nonPersonnelItems: NonPersonnelCostItem[] = (draft.nonPersonnel || []).map((np, idx) => ({
-    id: `draft-np-${idx}`,
-    category: normalizeNonPersonnelCategory(np.category, np.itemName),
-    itemName: np.itemName || 'Komponen Pendukung Teknis',
-    quantity: Math.max(1, Number(np.quantity) || 1),
-    unit: np.unit || 'Paket',
-    unitPrice: Math.max(0, Math.round(Number(np.unitPrice) || 0)),
-    notes: np.notes || 'Sesuai acuan standar regulasi aktif',
-  }));
+  const nonPersonnelItems: NonPersonnelCostItem[] = (draft.nonPersonnel || []).map((np, idx) => {
+    let qty = Math.max(1, Number(np.quantity) || 1);
+    let price = Math.max(0, Math.round(Number(np.unitPrice) || 0));
+    const unitLower = (np.unit || '').toLowerCase();
+
+    if (priceMode === 'floor') {
+      qty = Math.max(1, Math.floor(qty * 0.85));
+      price = Math.round(price * 0.90);
+    } else if (priceMode === 'ceiling') {
+      if (unitLower.includes('tahun')) {
+        qty = Math.min(3, Math.max(qty, 3));
+      } else if (unitLower.includes('paket')) {
+        qty = Math.min(5, Math.max(qty, 3));
+      } else if (unitLower.includes('bulan')) {
+        qty = projectDuration;
+      } else {
+        qty = Math.max(qty, 3);
+      }
+      price = Math.round(price * 1.15);
+    }
+
+    return {
+      id: `draft-np-${priceMode}-${idx}`,
+      category: normalizeNonPersonnelCategory(np.category, np.itemName),
+      itemName: np.itemName || 'Komponen Pendukung Teknis',
+      quantity: qty,
+      unit: np.unit || 'Paket',
+      unitPrice: price,
+      notes: np.notes || 'Sesuai acuan standar regulasi aktif',
+    };
+  });
 
   const overheadPct =
-    typeof draft.recommendedOverheadPercent === 'number' &&
-    draft.recommendedOverheadPercent >= 0 &&
-    draft.recommendedOverheadPercent <= 15
+    priceMode === 'floor'
+      ? 10
+      : priceMode === 'ceiling'
+      ? 15
+      : typeof draft.recommendedOverheadPercent === 'number' &&
+        draft.recommendedOverheadPercent >= 0 &&
+        draft.recommendedOverheadPercent <= 15
       ? draft.recommendedOverheadPercent
-      : 10;
+      : 12;
 
   const financials: FinancialParameters = {
     overheadAndProfitPercent: overheadPct,
@@ -728,6 +774,22 @@ export function buildPricedItemsFromDraft(
   );
 
   return { personnelItems, nonPersonnelItems, financials, summary };
+}
+
+/**
+ * Builds deterministic PersonnelAllocationItem[] and CalculationSummary for any DraftEstimatePayload
+ * strictly using the active regulationConfig billing rates (zero hardcoded rates).
+ */
+export function buildPricedItemsFromDraft(
+  draft: DraftEstimatePayload,
+  regulationConfig: RegulationConfigPayload
+): {
+  personnelItems: PersonnelAllocationItem[];
+  nonPersonnelItems: NonPersonnelCostItem[];
+  financials: FinancialParameters;
+  summary: CalculationSummary;
+} {
+  return buildPricedItemsForPriceMode(draft, regulationConfig, 'standard');
 }
 
 /**

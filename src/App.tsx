@@ -24,6 +24,7 @@ import {
   Share2,
   Shield,
   Sliders,
+  Sparkles,
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { CalculatorTab } from './components/CalculatorTab';
@@ -1052,16 +1053,16 @@ export default function App() {
         {/* TACTICAL BARCODE, SHARE LINK & BUDGET TELEMETRY STRIP */}
         <section className="hud-panel p-4 sm:px-5 sm:py-4 flex flex-col xl:flex-row xl:items-center justify-between gap-4 no-print">
           {/* Left: Budget Distribution Readout */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2.5">
-              <Sliders className="w-4 h-4 text-amber-400 shrink-0" />
-              <div className="text-xs">
-                <span className="font-mono font-semibold text-amber-300">
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className="font-mono text-xs font-semibold text-amber-300 tracking-wider">
                   KOMPOSISI STRUKTUR ANGGARAN AKTIF:
                 </span>
-                <span className="text-slate-300 ml-1.5">
-                  {profile.projectName}
-                </span>
+              </div>
+              <div className="text-sm sm:text-base font-display font-extrabold text-white tracking-wide pl-6">
+                {profile.projectName}
               </div>
             </div>
 
@@ -1154,6 +1155,140 @@ export default function App() {
             </div>
           </div>
         </section>
+
+        {/* DASHBOARD REGULATED PRICE OPTIONS PANEL (FLOOR, STANDARD, CEILING) */}
+        {activeTab === 'calculator' && (
+          <section className="hud-panel p-4 sm:p-5 space-y-3 no-print border border-cyan-500/40 bg-[#040917]">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-cyan-500/25 pb-2.5">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className="font-mono text-xs font-bold text-cyan-300 tracking-wider">
+                  PILIHAN OPSI HARGA REGULASI HPS (BAWAH · STANDARD · ATAS)
+                </span>
+              </div>
+              <span className="text-[10px] font-mono text-slate-400">
+                Acuan: Perpres 12/2021 &amp; SBM Kemenkeu 2026
+              </span>
+            </div>
+
+            {(() => {
+              const summaryFloor = calculateProjectSummary(
+                personnelItems,
+                nonPersonnelItems,
+                { ...financials, overheadAndProfitPercent: 10 },
+                profile.locationFactor
+              );
+              const summaryStandard = calculateProjectSummary(
+                personnelItems,
+                nonPersonnelItems,
+                { ...financials, overheadAndProfitPercent: 12 },
+                profile.locationFactor
+              );
+              const summaryCeiling = calculateProjectSummary(
+                personnelItems,
+                nonPersonnelItems,
+                { ...financials, overheadAndProfitPercent: 15 },
+                profile.locationFactor
+              );
+
+              const handleApplyMode = (mode: 'floor' | 'standard' | 'ceiling') => {
+                const targetOh = mode === 'floor' ? 10 : mode === 'ceiling' ? 15 : 12;
+                setFinancials((prev) => ({
+                  ...prev,
+                  overheadAndProfitPercent: targetOh,
+                }));
+                const targetTotal =
+                  mode === 'floor'
+                    ? summaryFloor.grandTotalEstimation
+                    : mode === 'ceiling'
+                    ? summaryCeiling.grandTotalEstimation
+                    : summaryStandard.grandTotalEstimation;
+                const modeLabel =
+                  mode === 'floor'
+                    ? 'Batas Bawah (Floor · OH 10%)'
+                    : mode === 'ceiling'
+                    ? 'Batas Atas (Ceiling HPS · OH 15%)'
+                    : 'Harga Standar (Rekomendasi · OH 12%)';
+
+                setSyncNotice(`Kertas Kerja Kalkulator berhasil disesuaikan ke Opsi ${modeLabel}: ${formatIDR(targetTotal)}`);
+                setTimeout(() => setSyncNotice(null), 4500);
+              };
+
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 font-mono">
+                  <button
+                    type="button"
+                    onClick={() => handleApplyMode('floor')}
+                    className={`p-3 text-left border transition-all group ${
+                      financials.overheadAndProfitPercent === 10
+                        ? 'bg-emerald-950/80 border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.25)]'
+                        : 'bg-[#030814] hover:bg-emerald-950/40 border-emerald-500/30'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-emerald-400 font-bold uppercase">1. Batas Bawah (Floor)</span>
+                      {financials.overheadAndProfitPercent === 10 && (
+                        <span className="text-[9px] bg-emerald-400 text-slate-950 px-1.5 py-0.2 font-bold">AKTIF</span>
+                      )}
+                    </div>
+                    <div className="text-sm sm:text-base font-bold text-white group-hover:text-emerald-200 mt-1">
+                      {formatIDR(summaryFloor.grandTotalEstimation)}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      Overhead Wajar 10% (Efisiensi HPS)
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleApplyMode('standard')}
+                    className={`p-3 text-left border transition-all group ${
+                      financials.overheadAndProfitPercent === 12
+                        ? 'bg-cyan-950/80 border-cyan-400 shadow-[0_0_15px_rgba(0,240,255,0.25)]'
+                        : 'bg-[#030814] hover:bg-cyan-950/40 border-cyan-500/30'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-cyan-300 font-bold uppercase">2. Harga Standar (Utama)</span>
+                      {financials.overheadAndProfitPercent === 12 && (
+                        <span className="text-[9px] bg-cyan-400 text-slate-950 px-1.5 py-0.2 font-bold">AKTIF</span>
+                      )}
+                    </div>
+                    <div className="text-sm sm:text-base font-bold text-amber-300 group-hover:text-amber-200 mt-1">
+                      {formatIDR(summaryStandard.grandTotalEstimation)}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      Overhead Rekomendasi 12%
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleApplyMode('ceiling')}
+                    className={`p-3 text-left border transition-all group ${
+                      financials.overheadAndProfitPercent === 15
+                        ? 'bg-amber-950/80 border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.25)]'
+                        : 'bg-[#030814] hover:bg-amber-950/40 border-amber-500/30'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-amber-400 font-bold uppercase">3. Batas Atas (Ceiling HPS)</span>
+                      {financials.overheadAndProfitPercent === 15 && (
+                        <span className="text-[9px] bg-amber-400 text-slate-950 px-1.5 py-0.2 font-bold">AKTIF</span>
+                      )}
+                    </div>
+                    <div className="text-sm sm:text-base font-bold text-white group-hover:text-amber-200 mt-1">
+                      {formatIDR(summaryCeiling.grandTotalEstimation)}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      Overhead Maksimal Regulasi 15%
+                    </div>
+                  </button>
+                </div>
+              );
+            })()}
+          </section>
+        )}
 
         {/* ACTIVE TAB VIEWPORT */}
         {activeTab === 'calculator' && (

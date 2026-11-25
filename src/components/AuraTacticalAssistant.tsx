@@ -19,6 +19,7 @@ import {
 } from '../types/aura';
 import {
   buildPricedItemsFromDraft,
+  buildPricedItemsForPriceMode,
   generateDeterministicArchitecturalEstimate,
   normalizeDraftEstimate,
 } from '../utils/architecturalEstimator';
@@ -184,8 +185,8 @@ export const AuraTacticalAssistant: React.FC<AuraTacticalAssistantProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-5 bg-slate-950/85 backdrop-blur-sm">
-      <div className="hud-command-crest w-full max-w-4xl h-[92vh] sm:h-[85vh] flex flex-col bg-[#040812] border border-cyan-400/45 shadow-[0_0_32px_rgba(0,240,255,0.22)] overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-slate-950/85 backdrop-blur-sm">
+      <div className="hud-command-crest w-full h-[100dvh] sm:h-[90vh] sm:max-w-5xl sm:rounded-lg flex flex-col bg-[#040812] border border-cyan-400/45 shadow-[0_0_32px_rgba(0,240,255,0.22)] overflow-hidden">
         {/* Header Bar */}
         <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 bg-[#061022] border-b border-cyan-500/30 shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -393,7 +394,7 @@ export const AuraTacticalAssistant: React.FC<AuraTacticalAssistantProps> = ({
                         {appliedMsgId === msg.id ? (
                           <div className="flex items-center gap-1.5 px-4 py-2 bg-emerald-950 border border-emerald-400 text-emerald-300 text-xs font-mono font-bold">
                             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                            <span>Berhasil Dimuat ke Kalkulator!</span>
+                            <span>Berhasil Dimuat ke Form Kalkulator!</span>
                           </div>
                         ) : (
                           <button
