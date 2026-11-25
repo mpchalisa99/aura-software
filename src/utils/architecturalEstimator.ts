@@ -926,7 +926,7 @@ export function normalizeDraftEstimate(
     projectName: (rawDraft.projectName || '').trim() || `Estimasi Proyek: ${userMsg.slice(0, 60)}`,
     proposingUnit:
       (rawDraft.proposingUnit || '').trim() ||
-      'Disinfolahtaau (Dinas Informasi dan Pengolahan Data Angkatan Udara)',
+      'Diskomlekau (Dinas Komunikasi dan Elektronika Angkatan Udara)',
     procurementScheme: matchedScheme,
     complexityLevel: matchedComplexity,
     tierClassification: tierCode,
@@ -1418,7 +1418,7 @@ export function generateDeterministicArchitecturalEstimate(
 
     draft = {
       projectName,
-      proposingUnit: 'Disinfolahtaau — Subdis Sistem Informasi Operasi & Penerbangan',
+      proposingUnit: 'Diskomlekau — Subdis Sistem Informasi Operasi & Penerbangan',
       procurementScheme: meta.procurementScheme,
       complexityLevel: meta.complexityLevel,
       tierClassification: 'TIER 3',
@@ -1738,8 +1738,8 @@ export function generateDeterministicArchitecturalEstimate(
     draft = {
       projectName,
       proposingUnit: isSim
-        ? 'Disinfolahtaau, Disdikau & Dinas Kelaikan Terbang TNI AU'
-        : 'Satsiber TNI AU, Kohanudnas & Disinfolahtaau',
+        ? 'Diskomlekau, Disdikau & Dinas Kelaikan Terbang TNI AU'
+        : 'Satsiber TNI AU, Kohanudnas & Diskomlekau',
       procurementScheme: meta.procurementScheme,
       complexityLevel: meta.complexityLevel,
       tierClassification: 'TIER 4',

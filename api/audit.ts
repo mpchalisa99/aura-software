@@ -20,7 +20,7 @@ interface AuditRequestBody {
   regulationConfig?: RegulationConfigPayload;
 }
 
-const SYSTEM_INSTRUCTION = `Anda adalah Auditor Ahli Pengadaan Barang/Jasa Pemerintah & Arsitek Sistem Militer TNI Angkatan Udara pada sistem AURA-SOFTWARE (Disinfolahtaau).
+const SYSTEM_INSTRUCTION = `Anda adalah Auditor Ahli Pengadaan Barang/Jasa Pemerintah & Arsitek Sistem Militer TNI Angkatan Udara pada sistem AURA-SOFTWARE (Diskomlekau).
 Tugas Anda adalah mengevaluasi kewajaran Kertas Kerja Harga Perkiraan Sendiri (HPS) / Rencana Anggaran Biaya (RAB) perangkat lunak dengan fokus khusus pada:
 1. Regulasi resmi aktif (Perpres No. 12 Tahun 2021, Perlem LKPP No. 12 Tahun 2021, SBM Kemenkeu, Billing Rate INKINDO, dan UU HPP PPN).
 2. Deteksi Duplikasi & Jumlah Berlebih Per Peran (Man-Month / OB):
@@ -84,6 +84,7 @@ export default async function handler(req: Request, res: Response) {
       fallbackReport: {
         ...deterministicBase,
         source: 'LOCAL_HEURISTIC_ENGINE',
+        modelUsed: 'Deterministic-Rule-Engine-v2.8',
       },
     });
   }
@@ -121,16 +122,17 @@ export default async function handler(req: Request, res: Response) {
       deterministicAdjustments: deterministicBase.solutions.adjustments,
     };
 
-    const userPrompt = `Lakukan audit mendalam atas Kertas Kerja HPS/RAB proyek berikut dengan fokus pada deteksi duplikasi peran manajerial, rasio komposisi tim, dan kepatuhan regulasi. Gunakan HANYA angka deterministik yang tertera pada DATA DETERMINISTIK TERKUNCI di bawah ini:
+    const userPrompt = `Lakukan audit mendalam atas Kertas Kerja HPS/RAB proyek berikut dengan fokus pada deteksi duplikasi peran manajerial, rasio komposisi tim, kesesuaian ruang lingkup dengan komposisi sumber daya, dan kepatuhan regulasi. Gunakan HANYA angka deterministik yang tertera pada DATA DETERMINISTIK TERKUNCI di bawah ini:
 
 DATA DETERMINISTIK TERKUNCI:
 ${JSON.stringify(lockedPayloadSummary, null, 2)}
 
 Tuliskan dalam Bahasa Indonesia formal militer/pemerintahan:
 1. executiveSummary: Ringkasan eksekutif hasil audit yang mengutip angka Grand Total (${formatIDR(summary.grandTotalEstimation)}), status kepatuhan regulasi (${regulationConfig.version}), dan evaluasi komposisi tim.
-2. workloadJustificationSummary: Analisis mengapa beban kerja dan komposisi tim sepadan dengan kompleksitas teknis.
+2. workloadJustificationSummary: Analisis mengapa beban kerja dan komposisi tim sepadan (atau perlu direviu) terhadap kompleksitas teknis.
 3. summaryAdvice: Rekomendasi solusi terukur dan proporsional.
-4. refinedFindings: Diperbolehkan memperkaya narasi diagnosis dan technicalContextJustification dari deterministicFindings.`;
+4. refinedFindings: Diperbolehkan memperkaya narasi diagnosis dan technicalContextJustification dari deterministicFindings.
+5. scopeMismatchWarning: Opsional (isi string kosong jika wajar). Isi ringkas HANYA jika terdapat ketidaksesuaian kualitatif nyata antara ruang lingkup proyek dan alokasi peran/komponen non-personel.`;
 
     const responseSchema = {
       type: Type.OBJECT,
@@ -138,6 +140,7 @@ Tuliskan dalam Bahasa Indonesia formal militer/pemerintahan:
         executiveSummary: { type: Type.STRING },
         workloadJustificationSummary: { type: Type.STRING },
         summaryAdvice: { type: Type.STRING },
+        scopeMismatchWarning: { type: Type.STRING },
         refinedFindings: {
           type: Type.ARRAY,
           items: {
@@ -160,12 +163,14 @@ Tuliskan dalam Bahasa Indonesia formal militer/pemerintahan:
       ],
     };
 
-    let responseText = '';
-    let activeModelName = 'gemini-2.5-flash';
+    const activeModelName = 'gemini-2.5-flash';
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Gemini audit timeout (>7000ms)')), 7000);
+    });
 
-    try {
-      const geminiRes = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+    const geminiRes = await Promise.race([
+      ai.models.generateContent({
+        model: activeModelName,
         contents: userPrompt,
         config: {
           systemInstruction: SYSTEM_INSTRUCTION,
@@ -173,26 +178,17 @@ Tuliskan dalam Bahasa Indonesia formal militer/pemerintahan:
           responseMimeType: 'application/json',
           responseSchema,
         },
-      });
-      responseText = geminiRes.text || '';
-    } catch {
-      activeModelName = 'gemini-4-hydrogen';
-      const fallbackRes = await ai.models.generateContent({
-        model: 'gemini-4-hydrogen',
-        contents: userPrompt,
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          responseMimeType: 'application/json',
-          responseSchema,
-        },
-      });
-      responseText = fallbackRes.text || '';
-    }
+      }),
+      timeoutPromise,
+    ]);
+
+    const responseText = geminiRes.text || '';
 
     const parsedAi = JSON.parse(responseText || '{}') as {
       executiveSummary?: string;
       workloadJustificationSummary?: string;
       summaryAdvice?: string;
+      scopeMismatchWarning?: string;
       refinedFindings?: Array<{
         id: string;
         title: string;
@@ -213,8 +209,26 @@ Tuliskan dalam Bahasa Indonesia formal militer/pemerintahan:
       };
     });
 
+    let finalStatus = deterministicBase.status;
+    const mismatchNote = (parsedAi.scopeMismatchWarning || '').trim();
+    if (mismatchNote.length > 15 && finalStatus === 'WAJAR / COMPLIANT') {
+      finalStatus = 'PERINGATAN / PERLU REVIU';
+      mergedFindings.push({
+        id: 'finding-ai-scope-review',
+        severity: 'WARNING',
+        category: 'KOMPLEKSITAS_TEKNIS',
+        title: 'Catatan Reviu AI: Verifikasi Kesesuaian Ruang Lingkup & Spesifikasi Teknis',
+        diagnosis: mismatchNote,
+        regulationCitation: 'Perlem LKPP No. 12 Tahun 2021 — Kesesuaian KAK & Spesifikasi Teknis',
+        technicalContextJustification:
+          'Temuan kualitatif dari Audit AI untuk memastikan ruang lingkup operasional selaras dengan komponen anggaran tanpa memotong kebutuhan keamanan.',
+        deterministicMetric: `Status Awal: ${deterministicBase.status} -> Reviu AI`,
+      });
+    }
+
     const finalReport: AuditReportResult = {
       ...deterministicBase,
+      status: finalStatus,
       source: 'AI_SERVER_AUDIT',
       modelUsed: activeModelName,
       auditedAt: new Date().toISOString(),
@@ -240,6 +254,7 @@ Tuliskan dalam Bahasa Indonesia formal militer/pemerintahan:
       fallbackReport: {
         ...deterministicBase,
         source: 'LOCAL_HEURISTIC_ENGINE',
+        modelUsed: 'Deterministic-Rule-Engine-v2.8',
       },
     });
   }

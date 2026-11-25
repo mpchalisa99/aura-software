@@ -56,7 +56,7 @@ export const SystemAuditPanel: React.FC<SystemAuditPanelProps> = ({
     setAiStatusNotice(null);
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    const timeoutId = setTimeout(() => controller.abort(), 8500);
 
     try {
       const response = await fetch('/api/audit', {
@@ -79,15 +79,16 @@ export const SystemAuditPanel: React.FC<SystemAuditPanelProps> = ({
       const data = await response.json();
 
       if (response.ok && data && data.status && Array.isArray(data.findings)) {
-        onUpdateAuditReport(data as AuditReportResult);
+        const nextReport = data as AuditReportResult;
+        onUpdateAuditReport(nextReport);
         setAiStatusNotice(
-          `Analisis Audit AI Server (${data.modelUsed || 'gemini-2.5-flash'}) selesai dengan penguncian angka deterministik.`
+          `Analisis Audit AI Server (${nextReport.modelUsed || 'gemini-2.5-flash'}) selesai · Status: ${nextReport.status}.`
         );
       } else if (data && data.fallbackReport) {
-        onUpdateAuditReport(data.fallbackReport as AuditReportResult);
+        const fallbackRep = data.fallbackReport as AuditReportResult;
+        onUpdateAuditReport(fallbackRep);
         setAiStatusNotice(
-          data.error ||
-            'Menggunakan hasil analisis Mesin Heuristik Deterministik Lokal Terverifikasi.'
+          `${data.error || 'Menggunakan hasil analisis Mesin Heuristik Deterministik Lokal Terverifikasi.'} · Status: ${fallbackRep.status}.`
         );
       } else {
         const fallback = runDeterministicAudit(
@@ -100,8 +101,7 @@ export const SystemAuditPanel: React.FC<SystemAuditPanelProps> = ({
         );
         onUpdateAuditReport(fallback);
         setAiStatusNotice(
-          data?.error ||
-            'Endpoint /api/audit merespons di luar format standar. Menampilkan hasil audit deterministik lokal.'
+          `${data?.error || 'Endpoint /api/audit merespons di luar format standar. Menampilkan hasil audit deterministik lokal.'} · Status: ${fallback.status}.`
         );
       }
     } catch {
@@ -116,7 +116,7 @@ export const SystemAuditPanel: React.FC<SystemAuditPanelProps> = ({
       );
       onUpdateAuditReport(fallback);
       setAiStatusNotice(
-        'Koneksi /api/audit timeout (>7 detik) atau offline. Menampilkan hasil analisis deterministik lokal yang terkunci secara instan.'
+        `Koneksi /api/audit timeout (>8 detik) atau offline. Status diperbarui menggunakan mesin deterministik lokal: ${fallback.status}.`
       );
     } finally {
       setIsAnalyzingAi(false);
@@ -125,9 +125,10 @@ export const SystemAuditPanel: React.FC<SystemAuditPanelProps> = ({
 
   const handleTriggerApply = (adjustments: AuditAdjustmentAction[], label: string) => {
     if (adjustments.length === 0) return;
+    setAiStatusNotice(null);
     onApplyAdjustments(adjustments);
     setAppliedSuccessMsg(label);
-    setTimeout(() => setAppliedSuccessMsg(null), 3500);
+    setTimeout(() => setAppliedSuccessMsg(null), 4000);
   };
 
   const statusColorConfig =
@@ -181,15 +182,28 @@ export const SystemAuditPanel: React.FC<SystemAuditPanelProps> = ({
         <div className="flex flex-wrap items-center gap-3">
           {/* Status Indicator Frame */}
           <div
-            className={`flex items-center gap-2.5 px-3.5 py-2 border ${statusColorConfig.border} ${statusColorConfig.bg}`}
+            aria-live="polite"
+            className={`flex items-center gap-2.5 px-3.5 py-2 border transition-colors ${
+              isAnalyzingAi
+                ? 'border-cyan-400/60 bg-cyan-950/50'
+                : `${statusColorConfig.border} ${statusColorConfig.bg}`
+            }`}
           >
-            {statusColorConfig.icon}
+            {isAnalyzingAi ? (
+              <RefreshCw className="w-5 h-5 text-cyan-400 animate-spin shrink-0" />
+            ) : (
+              statusColorConfig.icon
+            )}
             <div className="font-mono">
               <span className="block text-[10px] text-slate-400 leading-none">
                 STATUS AUDIT HPS/RAB
               </span>
-              <span className={`text-xs font-bold ${statusColorConfig.text}`}>
-                {auditReport.status}
+              <span
+                className={`text-xs font-bold ${
+                  isAnalyzingAi ? 'text-cyan-300' : statusColorConfig.text
+                }`}
+              >
+                {isAnalyzingAi ? 'MEMINDAI AUDIT...' : auditReport.status}
               </span>
             </div>
           </div>
@@ -369,15 +383,27 @@ export const SystemAuditPanel: React.FC<SystemAuditPanelProps> = ({
             </p>
 
             {auditReport.solutions.adjustments.length === 0 ? (
-              <div className="p-5 bg-[#040b18] border border-emerald-500/30 text-center space-y-2">
-                <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
-                <div className="text-sm font-display font-semibold text-white">
-                  Anggaran Telah Optimal &amp; Mematuhi Regulasi
+              auditReport.status === 'WAJAR / COMPLIANT' ? (
+                <div className="p-5 bg-[#040b18] border border-emerald-500/30 text-center space-y-2">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
+                  <div className="text-sm font-display font-semibold text-white">
+                    Anggaran Telah Optimal &amp; Mematuhi Regulasi
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Tidak ada komponen tarif yang melampaui acuan standar maupun duplikasi item. Seluruh alokasi personel dan keamanan siber direkomendasikan untuk dipertahankan 100%.
+                  </p>
                 </div>
-                <p className="text-xs text-slate-400">
-                  Tidak ada komponen tarif yang melampaui acuan standar maupun duplikasi item. Seluruh alokasi personel dan keamanan siber direkomendasikan untuk dipertahankan 100%.
-                </p>
-              </div>
+              ) : (
+                <div className="p-5 bg-[#040b18] border border-amber-400/40 text-center space-y-2">
+                  <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto" />
+                  <div className="text-sm font-display font-semibold text-white">
+                    Perlu Verifikasi Dokumen Pendukung / Survei Pasar
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Terdapat catatan reviu (seperti harga satuan komponen khusus atau verifikasi KAK) yang memerlukan konfirmasi manual dokumen E-Katalog LKPP tanpa pemotongan anggaran otomatis.
+                  </p>
+                </div>
+              )
             ) : (
               <div className="space-y-3">
                 {auditReport.solutions.adjustments.map((adj) => (
@@ -451,9 +477,20 @@ export const SystemAuditPanel: React.FC<SystemAuditPanelProps> = ({
                 </span>
               </div>
               {auditReport.solutions.totalMeasuredSavings !== 0 && (
-                <div className="flex items-center justify-between text-[11px] text-emerald-400 pt-1 border-t border-slate-800">
-                  <span>Selisih Penyesuaian Deterministik:</span>
+                <div
+                  className={`flex items-center justify-between text-[11px] pt-1 border-t border-slate-800 ${
+                    auditReport.solutions.totalMeasuredSavings > 0
+                      ? 'text-emerald-400'
+                      : 'text-amber-300'
+                  }`}
+                >
                   <span>
+                    {auditReport.solutions.totalMeasuredSavings > 0
+                      ? 'Efisiensi / Penurunan Terukur:'
+                      : 'Penambahan Penguatan Keamanan:'}
+                  </span>
+                  <span>
+                    {auditReport.solutions.totalMeasuredSavings > 0 ? '-' : '+'}
                     {formatIDR(Math.abs(auditReport.solutions.totalMeasuredSavings))}
                   </span>
                 </div>

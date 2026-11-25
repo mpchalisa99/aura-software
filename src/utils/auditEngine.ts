@@ -10,6 +10,7 @@ import {
   ProjectProfile,
   RegulationConfigPayload,
 } from '../types/aura';
+import { DEFAULT_REGULATION_CONFIG } from '../data/defaultRegulations';
 import { calculateProjectSummary, formatIDR, formatNumberID } from './formatters';
 
 export function computeTechnicalComplexityAssessment(
@@ -139,34 +140,55 @@ export function runDeterministicAudit(
   const globalHeadcount = summary.totalPersonnelHeadcount;
   const globalManMonths = summary.totalManMonths;
 
-  if (globalHeadcount > 40 || globalManMonths > 1000) {
-    const excessMmDelta = globalManMonths - 600;
-    const avgRatePerMm = summary.totalPersonnelCost / (globalManMonths || 1);
-    const directCostDelta = excessMmDelta * avgRatePerMm;
-    const grandTotalDelta = Math.round(directCostDelta * combinedTaxOverheadMult);
+  if (globalHeadcount > 25 || globalManMonths > 450) {
+    const isCriticalOverstaff = globalHeadcount > 40 || globalManMonths > 1000;
+    const ceilingActionDraft: AuditAdjustmentAction = {
+      id: 'adj-overstaffing-ceiling',
+      actionType: 'REDUCE_EXCESS_HEADCOUNT',
+      targetId: 'ALL_OVERSTAFFING',
+      title: 'Normalisasi Kapasitas Tim ke Batas Rasional (Maks. 24 Ahli / 420 OB)',
+      rationale: `Menyesuaikan kapasitas dan duplikasi tenaga ahli dari ${globalHeadcount} orang (${formatNumberID(globalManMonths, 1)} OB) ke komposisi optimum rasional sesuai batas kewajaran proyek perangkat lunak pemerintah.`,
+      regulationCitation: 'Perlem LKPP No. 12 Tahun 2021',
+      currentValueLabel: `${globalHeadcount} Orang (${formatNumberID(globalManMonths, 1)} OB)`,
+      recommendedValueLabel: 'Komposisi Optimum Rasional (<= 24 Ahli)',
+      recommendedNumericValue: 24,
+      exactDirectCostDelta: 0,
+      exactGrandTotalDelta: 0,
+    };
+    const ceilingDryRun = applyAuditAdjustmentsToState(
+      profile,
+      personnelItems,
+      nonPersonnelItems,
+      financials,
+      [ceilingActionDraft],
+      regulationConfig
+    );
+    const ceilingSummary = calculateProjectSummary(
+      ceilingDryRun.personnelItems,
+      ceilingDryRun.nonPersonnelItems,
+      ceilingDryRun.financials,
+      profile.locationFactor
+    );
+    const directCostDelta = summary.directCostSubtotal - ceilingSummary.directCostSubtotal;
+    const grandTotalDelta = summary.grandTotalEstimation - ceilingSummary.grandTotalEstimation;
 
     findings.push({
       id: 'finding-overstaffing-ceiling',
-      severity: 'CRITICAL',
+      severity: isCriticalOverstaff ? 'CRITICAL' : 'WARNING',
       category: 'VOLUME_DURASI',
-      title: `ANOMALI KRITIS / OVER-STAFFING (NON-COMPLIANT): Kapasitas Tim Melampaui Batas Atas (Ceiling) Wajar`,
-      diagnosis: `Total alokasi personel mencapai ${globalHeadcount} orang dengan beban ${formatNumberID(globalManMonths, 1)} Man-Month (OB), sangat jauh melampaui batas atas kewajaran proyek sistem informasi/militer (maksimal 35–40 personel / 1.000 OB), meskipun tingkat kompleksitas proyek bernilai tinggi (100/100). Hal ini dikategorikan sebagai penggelembungan anggaran (over-staffing).`,
+      title: isCriticalOverstaff
+        ? 'ANOMALI KRITIS / OVER-STAFFING (NON-COMPLIANT): Kapasitas Tim Melampaui Batas Atas (Ceiling) Wajar'
+        : 'PERINGATAN KAPASITAS TIM: Jumlah Tenaga Ahli / OB Mendekati Batas Atas Wajar',
+      diagnosis: `Total alokasi personel mencapai ${globalHeadcount} orang dengan beban ${formatNumberID(globalManMonths, 1)} Man-Month (OB), ${isCriticalOverstaff ? 'sangat jauh melampaui batas atas kewajaran proyek sistem informasi/militer (maksimal 25–40 personel / 1.000 OB)' : 'melampaui koridor efisien tim inti (25 personel / 450 OB)'}, meskipun tingkat kompleksitas proyek bernilai ${complexityAssessment.complexityScore}/100.`,
       regulationCitation: 'Perlem LKPP No. 12 Tahun 2021 & Standar Efisiensi Belanja Pengadaan Perangkat Lunak Pemerintah',
       technicalContextJustification:
-        'Skor kompleksitas teknis 100/100 mencerminkan tingkat kerumitan arsitektur (seperti sistem C4ISR atau keamanan siber berlapis), namun tetap memerlukan komposisi tenaga ahli yang proporsional dan rasional (ideal ~25-35 ahli), bukan penambahan headcount masif yang tidak terkelola.',
-      deterministicMetric: `Total Tim: ${globalHeadcount} Orang · Total OB: ${formatNumberID(globalManMonths, 1)} OB · Batas Wajar Maks: 35 Orang / 900 OB`,
+        'Skor kompleksitas teknis tinggi mencerminkan kerumitan arsitektur (seperti C4ISR atau keamanan siber berlapis), namun tetap memerlukan komposisi tenaga ahli inti yang ramping dan terkelola (ideal <= 24 ahli), bukan penambahan headcount paralel berlebihan (Brooks\'s Law).',
+      deterministicMetric: `Total Tim: ${globalHeadcount} Orang · Total OB: ${formatNumberID(globalManMonths, 1)} OB · Batas Wajar: <= 25 Orang / 450 OB`,
     });
 
     adjustments.push({
-      id: 'adj-overstaffing-ceiling',
-      actionType: 'REDUCE_EXCESS_HEADCOUNT',
-      targetId: personnelItems[0]?.id || 'all',
-      title: 'Normalisasi Kapasitas Tim ke Batas Atas Rasional (Kompilasi Optimum 30 Ahli)',
-      rationale: `Memangkas kelebihan kapasitas dan duplikasi tenaga ahli dari ${globalHeadcount} orang (${formatNumberID(globalManMonths, 1)} OB) ke komposisi optimum rasional (~30 tenaga ahli), menghasilkan efisiensi anggaran signifikan sesuai standar HPS LKPP.`,
-      regulationCitation: 'Perlem LKPP No. 12 Tahun 2021',
-      currentValueLabel: `${globalHeadcount} Orang (${formatNumberID(globalManMonths, 1)} OB)`,
-      recommendedValueLabel: '30 Orang Optimum (Batas Wajar)',
-      recommendedNumericValue: 4,
+      ...ceilingActionDraft,
+      recommendedValueLabel: `${ceilingSummary.totalPersonnelHeadcount} Ahli (${formatNumberID(ceilingSummary.totalManMonths, 1)} OB)`,
       exactDirectCostDelta: -directCostDelta,
       exactGrandTotalDelta: -grandTotalDelta,
     });
@@ -236,15 +258,40 @@ export function runDeterministicAudit(
 
     // Check for explicit role duplication (multiple rows for the exact same role)
     if (group.rows.length > 1) {
-      const dupDirectCost = group.totalCost;
-      const dupGrandDelta = Math.round(dupDirectCost * combinedTaxOverheadMult);
+      const dupActionDraft: AuditAdjustmentAction = {
+        id: `adj-consolidate-role-${group.roleId}`,
+        actionType: 'DEDUPLICATE_NON_PERSONNEL',
+        targetId: group.roleId,
+        title: `Konsolidasikan Baris Terduplikasi Peran "${group.roleName}" Menjadi 1 Entri Terstruktur`,
+        rationale: `Menggabungkan ${group.rows.length} baris peran "${group.roleName}" menjadi satu entri terstruktur dengan penyesuaian durasi proporsional tanpa mengorbankan tim teknis.`,
+        regulationCitation: 'Perlem LKPP No. 12 Tahun 2021',
+        currentValueLabel: `${group.rows.length} Baris Terpecah (${formatIDR(group.totalCost)})`,
+        recommendedValueLabel: '1 Entri Terkonsolidasi',
+        recommendedNumericValue: 0,
+        exactDirectCostDelta: 0,
+        exactGrandTotalDelta: 0,
+      };
+      const dupDryRun = applyAuditAdjustmentsToState(
+        profile,
+        personnelItems,
+        nonPersonnelItems,
+        financials,
+        [dupActionDraft],
+        regulationConfig
+      );
+      const dupSummary = calculateProjectSummary(
+        dupDryRun.personnelItems,
+        dupDryRun.nonPersonnelItems,
+        dupDryRun.financials,
+        profile.locationFactor
+      );
 
       findings.push({
         id: `finding-dup-role-${group.roleId}`,
         severity: 'CRITICAL',
         category: 'VOLUME_DURASI',
         title: `Indikasi Duplikasi Baris Peran "${group.roleName}" (${group.rows.length} Baris Terakumulasi)`,
-        diagnosis: `Peran manajerial/koordinasi "${group.roleName}" muncul terpecah dalam ${group.rows.length} baris terpisah dengan total akumulasi ${group.totalHeadcount} orang, ${formatNumberID(group.totalManMonths, 1)} OB, dan total biaya ${formatIDR(group.totalCost)}. Hal ini berpotensi pencatatan ganda atau alokasi pengawas yang tidak terpadu.`,
+        diagnosis: `Peran "${group.roleName}" muncul terpecah dalam ${group.rows.length} baris terpisah dengan total akumulasi ${group.totalHeadcount} orang, ${formatNumberID(group.totalManMonths, 1)} OB, dan total biaya ${formatIDR(group.totalCost)}. Hal ini berpotensi pencatatan ganda atau alokasi pengawas yang tidak terpadu.`,
         regulationCitation: 'Perlem LKPP No. 12 Tahun 2021 — Prinsip Akuntabilitas & Efisiensi Struktur Tim HPS',
         technicalContextJustification:
           'Konsolidasi baris peran yang terduplikasi menjadi satu entri terstruktur dengan volume gabungan yang wajar memastikan kejelasan penugasan.',
@@ -252,17 +299,9 @@ export function runDeterministicAudit(
       });
 
       adjustments.push({
-        id: `adj-consolidate-role-${group.roleId}`,
-        actionType: 'DEDUPLICATE_NON_PERSONNEL', // Handled via role consolidation
-        targetId: group.roleId,
-        title: `Konsolidasikan Baris Terduplikasi Peran "${group.roleName}" Menjadi 1 Entri Terstruktur`,
-        rationale: `Menggabungkan ${group.rows.length} baris peran "${group.roleName}" menjadi satu entri dengan total headcount terakumulasi (${group.totalHeadcount} orang) tanpa mengubah total biaya langsung atau mengorbankan tim teknis.`,
-        regulationCitation: 'Perlem LKPP No. 12 Tahun 2021',
-        currentValueLabel: `${group.rows.length} Baris Terpecah (${formatIDR(group.totalCost)})`,
-        recommendedValueLabel: '1 Entri Terkonsolidasi',
-        recommendedNumericValue: 0,
-        exactDirectCostDelta: 0,
-        exactGrandTotalDelta: 0,
+        ...dupActionDraft,
+        exactDirectCostDelta: dupSummary.directCostSubtotal - summary.directCostSubtotal,
+        exactGrandTotalDelta: dupSummary.grandTotalEstimation - summary.grandTotalEstimation,
       });
     }
 
@@ -272,14 +311,34 @@ export function runDeterministicAudit(
 
     if (group.totalHeadcount > maxAllowedCount) {
       const isCrit = group.totalHeadcount > criticalAllowedCount;
-      const targetCount = isManagerial ? 2 : 4;
-      const excessCount = group.totalHeadcount - targetCount;
-      const activeRate =
-        group.rows[0].overrideRate !== null
-          ? group.rows[0].overrideRate
-          : Math.round(group.rows[0].standardRate * profile.locationFactor);
-      const excessDirectCost = excessCount * group.rows[0].durationMonths * activeRate;
-      const excessGrandDelta = Math.round(excessDirectCost * combinedTaxOverheadMult);
+      const targetCount = isManagerial ? 1 : 4;
+      const hardcapDraft: AuditAdjustmentAction = {
+        id: `adj-hardcap-role-${group.roleId}`,
+        actionType: 'REDUCE_EXCESS_HEADCOUNT',
+        targetId: group.roleId,
+        title: `Normalisasi Jumlah Peran "${group.roleName}" ke Batas Wajar (${targetCount} Orang)`,
+        rationale: `Menyesuaikan alokasi personel dari ${group.totalHeadcount} orang menjadi ${targetCount} orang pada peran "${group.roleName}".`,
+        regulationCitation: 'Perlem LKPP No. 12 Tahun 2021',
+        currentValueLabel: `${group.totalHeadcount} Orang (${formatIDR(group.totalCost)})`,
+        recommendedValueLabel: `${targetCount} Orang (Proporsional)`,
+        recommendedNumericValue: targetCount,
+        exactDirectCostDelta: 0,
+        exactGrandTotalDelta: 0,
+      };
+      const hardcapDryRun = applyAuditAdjustmentsToState(
+        profile,
+        personnelItems,
+        nonPersonnelItems,
+        financials,
+        [hardcapDraft],
+        regulationConfig
+      );
+      const hardcapSummary = calculateProjectSummary(
+        hardcapDryRun.personnelItems,
+        hardcapDryRun.nonPersonnelItems,
+        hardcapDryRun.financials,
+        profile.locationFactor
+      );
 
       findings.push({
         id: `finding-hardcap-role-${group.roleId}`,
@@ -289,61 +348,14 @@ export function runDeterministicAudit(
         diagnosis: `Alokasi personel pada peran "${group.roleName}" mencapai ${group.totalHeadcount} orang (${formatNumberID(group.totalManMonths, 1)} OB), melampaui batas atas wajar (${isCrit ? 'kritis' : 'maksimal'} ${targetCount}–${maxAllowedCount} orang). Kelebihan jumlah tenaga ahli paralel pada satu peran melanggar prinsip efisiensi dan menyebabkan inefisiensi koordinasi (Brooks's Law).`,
         regulationCitation: 'Perlem LKPP No. 12 Tahun 2021 — Prinsip Kewajaran Beban Kerja & Efisiensi Pengadaan',
         technicalContextJustification:
-          'Kompleksitas tinggi membenarkan kualifikasi Senior/Lead, namun bukan penambahan ratusan tenaga ahli paralel pada satu peran.',
+          'Kompleksitas tinggi membenarkan kualifikasi Senior/Lead, namun bukan penambahan banyak tenaga ahli paralel pada satu peran.',
         deterministicMetric: `Jumlah Saat Ini: ${group.totalHeadcount} Orang · Batas Wajar: ${targetCount} Orang`,
       });
 
       adjustments.push({
-        id: `adj-hardcap-role-${group.roleId}`,
-        actionType: 'REDUCE_EXCESS_HEADCOUNT',
-        targetId: group.rows[0].id,
-        title: `Normalisasi Jumlah Peran "${group.roleName}" ke Batas Wajar (${targetCount} Orang)`,
-        rationale: `Menyesuaikan alokasi personel dari ${group.totalHeadcount} orang menjadi ${targetCount} orang pada peran "${group.roleName}".`,
-        regulationCitation: 'Perlem LKPP No. 12 Tahun 2021',
-        currentValueLabel: `${group.totalHeadcount} Orang (${formatIDR(group.totalCost)})`,
-        recommendedValueLabel: `${targetCount} Orang (Proporsional)`,
-        recommendedNumericValue: targetCount,
-        exactDirectCostDelta: -excessDirectCost,
-        exactGrandTotalDelta: -excessGrandDelta,
-      });
-    }
-  });
-
-  // Check individual row duration exceeding project duration
-  personnelItems.forEach((item) => {
-    if (item.durationMonths > profile.durationMonths) {
-      const excessMonths = item.durationMonths - profile.durationMonths;
-      const activeRate =
-        item.overrideRate !== null
-          ? item.overrideRate
-          : Math.round(item.standardRate * profile.locationFactor);
-      const excessMm = excessMonths * item.headcount;
-      const directDelta = excessMm * activeRate;
-      const grandDelta = Math.round(directDelta * combinedTaxOverheadMult);
-
-      findings.push({
-        id: `finding-dur-exceed-${item.id}`,
-        severity: 'CRITICAL',
-        category: 'VOLUME_DURASI',
-        title: `ANOMALI DURASI PENUGASAN: "${item.roleName}" (${item.durationMonths} Bulan > Proyek ${profile.durationMonths} Bulan)`,
-        diagnosis: `Durasi penugasan personel pada peran "${item.roleName}" melampaui jadwal total pelaksanaan proyek utama (${profile.durationMonths} bulan).`,
-        regulationCitation: 'Perlem LKPP No. 12 Tahun 2021 — Kesesuaian KAK & Kontrak',
-        technicalContextJustification: 'Durasi penugasan tenaga ahli wajib diselaraskan dengan masa kontrak proyek.',
-        deterministicMetric: `Kelebihan Durasi: ${excessMonths} Bulan · Kelebihan OB: ${formatNumberID(excessMm, 1)}`,
-      });
-
-      adjustments.push({
-        id: `adj-dur-exceed-${item.id}`,
-        actionType: 'CAP_PERSONNEL_DURATION',
-        targetId: item.id,
-        title: `Selaraskan Durasi "${item.roleName}" ke Batas Proyek (${profile.durationMonths} Bulan)`,
-        rationale: `Menyesuaikan durasi penugasan dari ${item.durationMonths} bulan menjadi ${profile.durationMonths} bulan.`,
-        regulationCitation: 'Perlem LKPP No. 12 Tahun 2021',
-        currentValueLabel: `${item.durationMonths} Bulan`,
-        recommendedValueLabel: `${profile.durationMonths} Bulan`,
-        recommendedNumericValue: profile.durationMonths,
-        exactDirectCostDelta: -directDelta,
-        exactGrandTotalDelta: -grandDelta,
+        ...hardcapDraft,
+        exactDirectCostDelta: hardcapSummary.directCostSubtotal - summary.directCostSubtotal,
+        exactGrandTotalDelta: hardcapSummary.grandTotalEstimation - summary.grandTotalEstimation,
       });
     }
   });
@@ -364,6 +376,47 @@ export function runDeterministicAudit(
         'Penyesuaian komposisi tim menjadi lebih ramping di sisi pengawas atau konsolidasi peran pimpinan proyek meningkatkan efisiensi eksekusi teknis.',
       deterministicMetric: `Manajerial: ${managerialHeadcount} Orang · Teknis: ${technicalHeadcount} Orang · Rasio: ${managerialRatio.toFixed(1)}%`,
     });
+
+    const alreadyHasManagerialCap = adjustments.some(
+      (a) =>
+        a.id === 'adj-overstaffing-ceiling' ||
+        a.id === 'adj-hardcap-role-role-pm'
+    );
+    if (!alreadyHasManagerialCap) {
+      const ratioActionDraft: AuditAdjustmentAction = {
+        id: 'adj-team-composition-topheavy',
+        actionType: 'REDUCE_EXCESS_HEADCOUNT',
+        targetId: 'MANAGERIAL_RATIO',
+        title: 'Rampingkan Rasio Peran Manajerial ke Struktur Proporsional (1 Orang Pimpinan)',
+        rationale: `Mengoptimalkan jumlah peran manajerial/koordinasi dari ${managerialHeadcount} orang menjadi 1 pimpinan proyek agar rasio tim teknis (${technicalHeadcount} orang) kembali proporsional.`,
+        regulationCitation: 'Standar Produktivitas Tim & Pedoman HPS LKPP',
+        currentValueLabel: `${managerialHeadcount} Manajerial (${managerialRatio.toFixed(1)}%)`,
+        recommendedValueLabel: '1 Manajerial Utama',
+        recommendedNumericValue: 1,
+        exactDirectCostDelta: 0,
+        exactGrandTotalDelta: 0,
+      };
+      const ratioDryRun = applyAuditAdjustmentsToState(
+        profile,
+        personnelItems,
+        nonPersonnelItems,
+        financials,
+        [ratioActionDraft],
+        regulationConfig
+      );
+      const ratioSummary = calculateProjectSummary(
+        ratioDryRun.personnelItems,
+        ratioDryRun.nonPersonnelItems,
+        ratioDryRun.financials,
+        profile.locationFactor
+      );
+
+      adjustments.push({
+        ...ratioActionDraft,
+        exactDirectCostDelta: ratioSummary.directCostSubtotal - summary.directCostSubtotal,
+        exactGrandTotalDelta: ratioSummary.grandTotalEstimation - summary.grandTotalEstimation,
+      });
+    }
   } else {
     findings.push({
       id: 'finding-team-composition-compliant',
@@ -695,16 +748,63 @@ export function runDeterministicAudit(
   );
 
   if (isHighOrStrategic && (!hasSecurityTesting || !hasQaRole)) {
+    const missingTargetId =
+      !hasQaRole && !hasSecurityTesting
+        ? 'MISSING_BOTH'
+        : !hasQaRole
+        ? 'MISSING_QA_ROLE'
+        : 'MISSING_PENTEST';
+
+    const secActionDraft: AuditAdjustmentAction = {
+      id: 'adj-sec-readiness',
+      actionType: 'ADD_SECURITY_COMPONENT',
+      targetId: missingTargetId,
+      title:
+        missingTargetId === 'MISSING_BOTH'
+          ? 'Lengkapi Peran QA/AppSec & Uji Penetrasi Siber (Pentest)'
+          : missingTargetId === 'MISSING_QA_ROLE'
+          ? 'Tambahkan Peran QA & Security Tester (AppSec) Sesuai Tarif Regulasi'
+          : 'Tambahkan Komponen Uji Kelaikan Keamanan Siber (Penetration Testing)',
+      rationale:
+        'Menambahkan komponen pengujian keamanan siber wajib berdasarkan tarif standar regulasi aktif untuk memenuhi kepatuhan kelaikan proyek berisiko tinggi/kritis.',
+      regulationCitation: 'Standar BSSN/Diskomlekau & SPBE',
+      currentValueLabel: `${!hasQaRole ? 'Tanpa QA/AppSec' : 'QA Ada'} · ${!hasSecurityTesting ? 'Tanpa Pentest' : 'Pentest Ada'}`,
+      recommendedValueLabel: 'QA/AppSec + Security Testing Lengkap',
+      recommendedNumericValue: 1,
+      exactDirectCostDelta: 0,
+      exactGrandTotalDelta: 0,
+    };
+    const secDryRun = applyAuditAdjustmentsToState(
+      profile,
+      personnelItems,
+      nonPersonnelItems,
+      financials,
+      [secActionDraft],
+      regulationConfig
+    );
+    const secSummary = calculateProjectSummary(
+      secDryRun.personnelItems,
+      secDryRun.nonPersonnelItems,
+      secDryRun.financials,
+      profile.locationFactor
+    );
+
     findings.push({
       id: 'finding-sec-readiness',
       severity: 'WARNING',
       category: 'KEAMANAN_SIBER',
       title: 'Rekomendasi Penguatan Verifikasi Kelaikan Siber (QA/AppSec & Penetration Testing)',
       diagnosis: `Proyek memiliki tingkat kompleksitas tinggi/kritis dengan standar keamanan berlapis, namun ${!hasQaRole ? 'belum mengalokasikan peran QA & Security Tester (AppSec)' : 'belum mencantumkan komponen non-personel Security Testing / Penetration Testing independen'}.`,
-      regulationCitation: 'Pedoman Kelaikan Keamanan Siber Pertahanan & Standar BSSN/Disinfolahtaau',
+      regulationCitation: 'Pedoman Kelaikan Keamanan Siber Pertahanan & Standar BSSN/Diskomlekau',
       technicalContextJustification:
         'Sesuai prinsip larangan pemotongan yang mengorbankan keamanan, sistem menyarankan agar komponen pengujian keamanan tetap dipenuhi guna menjamin kelaikan operasional.',
       deterministicMetric: `Status QA Role: ${hasQaRole ? 'Ada' : 'Belum Ada'} · Security Testing: ${hasSecurityTesting ? 'Ada' : 'Belum Ada'}`,
+    });
+
+    adjustments.push({
+      ...secActionDraft,
+      exactDirectCostDelta: secSummary.directCostSubtotal - summary.directCostSubtotal,
+      exactGrandTotalDelta: secSummary.grandTotalEstimation - summary.grandTotalEstimation,
     });
   } else if (hasSecurityTesting && hasQaRole) {
     findings.push({
@@ -727,7 +827,8 @@ export function runDeterministicAudit(
     personnelItems,
     nonPersonnelItems,
     financials,
-    adjustments
+    adjustments,
+    regulationConfig
   );
   const projectedSummary = calculateProjectSummary(
     simulatedResult.personnelItems,
@@ -752,12 +853,14 @@ export function runDeterministicAudit(
   const executiveSummary =
     adjustments.length === 0
       ? `Seluruh komponen biaya langsung personel (${formatIDR(summary.totalPersonnelCost)}), biaya non-personel (${formatIDR(summary.totalNonPersonnelCost)}), serta parameter keuangan pada proyek "${profile.projectName}" telah SESUAI (COMPLIANT) dengan rujukan ${regulationConfig.version} dan sepadan dengan profil kompleksitas teknis (${complexityAssessment.complexityScore}/100). Tidak diperlukan pemotongan anggaran.`
-      : `Ditemukan ${adjustments.length} temuan penyesuaian terukur berbasis regulasi ${regulationConfig.version} pada proyek "${profile.projectName}". Seluruh beban kerja kompleksitas teknis utama tetap dipertahankan (tanpa pemotongan agresif). Apabila saran koreksi diterapkan, Grand Total HPS/RAB akan disesuaikan secara terukur dari ${formatIDR(summary.grandTotalEstimation)} menjadi ${formatIDR(projectedSummary.grandTotalEstimation)} (koreksi bersih ${formatIDR(Math.abs(totalMeasuredSavings))}).`;
+      : `Ditemukan ${adjustments.length} temuan penyesuaian terukur berbasis regulasi ${regulationConfig.version} pada proyek "${profile.projectName}". Seluruh beban kerja kompleksitas teknis utama tetap dipertahankan (tanpa pemotongan agresif). Apabila saran koreksi diterapkan, Grand Total HPS/RAB akan disesuaikan secara terukur dari ${formatIDR(summary.grandTotalEstimation)} menjadi ${formatIDR(projectedSummary.grandTotalEstimation)} (${totalMeasuredSavings >= 0 ? 'efisiensi' : 'penambahan'} bersih ${formatIDR(Math.abs(totalMeasuredSavings))}).`;
 
   const summaryAdvice =
     adjustments.length === 0
-      ? 'Pertahankan struktur HPS/RAB saat ini. Alokasi tenaga ahli, infrastruktur, dan keamanan siber telah proporsional dan mematuhi batas tarif standar.'
-      : 'Terapkan koreksi terukur hanya pada komponen yang melampaui batas regulasi atau duplikat administratif di bawah ini, tanpa mengurangi jumlah tenaga ahli inti maupun komponen keamanan berlapis.';
+      ? status === 'WAJAR / COMPLIANT'
+        ? 'Pertahankan struktur HPS/RAB saat ini. Alokasi tenaga ahli, infrastruktur, dan keamanan siber telah proporsional dan mematuhi batas tarif standar.'
+        : 'Terdapat komponen berharga satuan tinggi yang memerlukan verifikasi survei harga pasar / E-Katalog LKPP tanpa pemotongan anggaran otomatis.'
+      : 'Terapkan koreksi terukur pada komponen yang melampaui batas regulasi, duplikat administratif, atau kelengkapan keamanan di bawah ini untuk memulihkan status kepatuhan HPS/RAB.';
 
   return {
     status,
@@ -778,12 +881,23 @@ export function runDeterministicAudit(
   };
 }
 
+function isManagerialRoleName(roleName: string): boolean {
+  const lower = roleName.toLowerCase();
+  return (
+    lower.includes('project manager') ||
+    lower.includes('team lead') ||
+    lower.includes('scrum master') ||
+    lower.includes('lead')
+  );
+}
+
 export function applyAuditAdjustmentsToState(
   profile: ProjectProfile,
   personnelItems: PersonnelAllocationItem[],
   nonPersonnelItems: NonPersonnelCostItem[],
   financials: FinancialParameters,
-  adjustmentsToApply: AuditAdjustmentAction[]
+  adjustmentsToApply: AuditAdjustmentAction[],
+  regulationConfig: RegulationConfigPayload = DEFAULT_REGULATION_CONFIG
 ): {
   personnelItems: PersonnelAllocationItem[];
   nonPersonnelItems: NonPersonnelCostItem[];
@@ -815,21 +929,121 @@ export function applyAuditAdjustmentsToState(
         ppnPercent: adj.recommendedNumericValue,
       };
     } else if (adj.actionType === 'REDUCE_EXCESS_HEADCOUNT') {
-      nextPersonnel = nextPersonnel.map((p) => {
-        const lower = p.roleName.toLowerCase();
-        if (
-          p.id === adj.targetId ||
-          p.roleId === adj.targetId ||
-          lower.includes('project manager') ||
-          lower.includes('team lead')
-        ) {
+      if (adj.id === 'adj-overstaffing-ceiling' || adj.targetId === 'ALL_OVERSTAFFING') {
+        // 1. Consolidate duplicate roles and cap durations to project duration
+        const groupMap = new Map<string, PersonnelAllocationItem>();
+        nextPersonnel.forEach((p) => {
+          const key = p.roleId || p.roleName.trim().toLowerCase();
+          const cappedDur = Math.min(Math.max(1, p.durationMonths), profile.durationMonths);
+          const existing = groupMap.get(key);
+          if (!existing) {
+            groupMap.set(key, { ...p, durationMonths: cappedDur });
+          } else {
+            existing.headcount += p.headcount;
+            existing.durationMonths = Math.max(existing.durationMonths, cappedDur);
+          }
+        });
+        let normalized = Array.from(groupMap.values());
+
+        // 2. Enforce per-role ceiling (Managerial <= 1-2, Technical <= 6)
+        const nonMgrTotal = normalized
+          .filter((p) => !isManagerialRoleName(p.roleName) && !p.roleName.toLowerCase().includes('technical writer'))
+          .reduce((acc, p) => acc + p.headcount, 0);
+        const mgrCap = nonMgrTotal <= 3 ? 1 : 2;
+
+        normalized = normalized.map((p) => {
+          const isMgr = isManagerialRoleName(p.roleName);
           return {
             ...p,
-            headcount: Math.min(p.headcount, adj.recommendedNumericValue || 2),
+            headcount: Math.min(p.headcount, isMgr ? mgrCap : 6),
           };
+        });
+
+        // 3. Scale down total headcount strictly <= 24 (within compliant zone <= 25)
+        let totalHc = normalized.reduce((acc, p) => acc + p.headcount, 0);
+        while (totalHc > 24) {
+          let maxIdx = -1;
+          let maxVal = 1;
+          normalized.forEach((p, idx) => {
+            if (p.headcount > maxVal) {
+              maxVal = p.headcount;
+              maxIdx = idx;
+            }
+          });
+          if (maxIdx === -1) {
+            // More than 24 distinct rows at headcount=1; trim last non-security row
+            if (normalized.length > 24) {
+              normalized.pop();
+              totalHc = normalized.reduce((acc, p) => acc + p.headcount, 0);
+            } else {
+              break;
+            }
+          } else {
+            normalized[maxIdx] = { ...normalized[maxIdx], headcount: normalized[maxIdx].headcount - 1 };
+            totalHc -= 1;
+          }
         }
-        return p;
-      });
+
+        // 4. Scale down total OB strictly <= 420 (within compliant zone <= 450)
+        let totalOb = normalized.reduce((acc, p) => acc + p.headcount * p.durationMonths, 0);
+        while (totalOb > 420) {
+          let maxIdx = -1;
+          let maxScore = 0;
+          normalized.forEach((p, idx) => {
+            const ob = p.headcount * p.durationMonths;
+            if ((p.headcount > 1 || p.durationMonths > 1) && ob > maxScore) {
+              maxScore = ob;
+              maxIdx = idx;
+            }
+          });
+          if (maxIdx === -1) break;
+          const target = normalized[maxIdx];
+          if (target.headcount > 1) {
+            normalized[maxIdx] = { ...target, headcount: target.headcount - 1 };
+          } else if (target.durationMonths > 1) {
+            normalized[maxIdx] = { ...target, durationMonths: Math.max(1, target.durationMonths - 1) };
+          }
+          totalOb = normalized.reduce((acc, p) => acc + p.headcount * p.durationMonths, 0);
+        }
+
+        nextPersonnel = normalized;
+      } else if (adj.id === 'adj-team-composition-topheavy' || adj.targetId === 'MANAGERIAL_RATIO') {
+        let keptFirstMgr = false;
+        nextPersonnel = nextPersonnel
+          .map((p) => {
+            if (!isManagerialRoleName(p.roleName)) return p;
+            if (!keptFirstMgr) {
+              keptFirstMgr = true;
+              return { ...p, headcount: 1 };
+            }
+            return { ...p, headcount: 0 };
+          })
+          .filter((p) => p.headcount > 0);
+      } else if (adj.targetId) {
+        const targetCap = Math.max(1, adj.recommendedNumericValue || 2);
+        const matchingIndices: number[] = [];
+        nextPersonnel.forEach((p, idx) => {
+          if (p.roleId === adj.targetId || p.id === adj.targetId) {
+            matchingIndices.push(idx);
+          }
+        });
+
+        if (matchingIndices.length > 0) {
+          let currentSum = matchingIndices.reduce((acc, idx) => acc + nextPersonnel[idx].headcount, 0);
+          // First reduce headcount from the last matching row backwards
+          for (let i = matchingIndices.length - 1; i >= 0 && currentSum > targetCap; i--) {
+            const rowIdx = matchingIndices[i];
+            const rowHc = nextPersonnel[rowIdx].headcount;
+            const minKeep = i === 0 ? 1 : 0;
+            if (rowHc > minKeep) {
+              const deduct = Math.min(rowHc - minKeep, currentSum - targetCap);
+              nextPersonnel[rowIdx] = { ...nextPersonnel[rowIdx], headcount: rowHc - deduct };
+              currentSum -= deduct;
+            }
+          }
+          nextPersonnel = nextPersonnel.filter((p) => p.headcount > 0);
+        }
+      }
     } else if (adj.actionType === 'ADJUST_NON_PERSONNEL_QTY' && adj.targetId) {
       nextNonPersonnel = nextNonPersonnel.map((np) =>
         np.id === adj.targetId
@@ -854,7 +1068,10 @@ export function applyAuditAdjustmentsToState(
           if (groupRows.length > 1 && (key.includes(roleIdMatch) || groupRows.some(g => g.roleId === adj.targetId))) {
             const first = groupRows[0];
             const totalHeadcount = groupRows.reduce((sum, r) => sum + r.headcount, 0);
-            const maxDuration = Math.max(...groupRows.map((r) => r.durationMonths));
+            const maxDuration = Math.min(
+              profile.durationMonths,
+              Math.max(...groupRows.map((r) => r.durationMonths))
+            );
             consolidated.push({
               ...first,
               headcount: totalHeadcount,
@@ -865,6 +1082,41 @@ export function applyAuditAdjustmentsToState(
           }
         });
         nextPersonnel = consolidated;
+      }
+    } else if (adj.actionType === 'ADD_SECURITY_COMPONENT') {
+      const needsQa = adj.targetId === 'MISSING_QA_ROLE' || adj.targetId === 'MISSING_BOTH';
+      const needsPentest = adj.targetId === 'MISSING_PENTEST' || adj.targetId === 'MISSING_BOTH';
+
+      if (needsQa && !nextPersonnel.some((p) => p.roleId === 'role-qa-sec' && p.headcount > 0 && p.durationMonths > 0)) {
+        const qaRole =
+          regulationConfig.roleTariffs.find((r) => r.id === 'role-qa-sec') ||
+          DEFAULT_REGULATION_CONFIG.roleTariffs.find((r) => r.id === 'role-qa-sec')!;
+        nextPersonnel.push({
+          id: `pers-sec-${Date.now()}`,
+          roleId: qaRole.id,
+          roleName: qaRole.roleName,
+          tier: 'Senior',
+          headcount: 1,
+          durationMonths: Math.max(1, Math.min(profile.durationMonths, Math.ceil(profile.durationMonths * 0.5))),
+          standardRate: qaRole.rates.Senior,
+          overrideRate: null,
+          taskDescription: 'Pengujian fungsional, AppSec, dan verifikasi kelaikan siber sesuai standar Diskomlekau.',
+        });
+      }
+
+      if (needsPentest && !nextNonPersonnel.some((np) => np.category === 'Security Testing' && np.quantity > 0 && np.unitPrice > 0)) {
+        const pentestStd =
+          regulationConfig.nonPersonnelStandards.find((s) => s.category === 'Security Testing') ||
+          DEFAULT_REGULATION_CONFIG.nonPersonnelStandards.find((s) => s.category === 'Security Testing')!;
+        nextNonPersonnel.push({
+          id: `np-sec-${Date.now()}`,
+          category: 'Security Testing',
+          itemName: pentestStd.name,
+          quantity: 1,
+          unit: pentestStd.unit,
+          unitPrice: pentestStd.defaultUnitPrice,
+          notes: 'Komponen wajib pengujian kelaikan keamanan siber independen.',
+        });
       }
     }
   }

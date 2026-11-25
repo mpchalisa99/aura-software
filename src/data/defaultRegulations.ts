@@ -32,7 +32,7 @@ export const LAYERED_SECURITY_STANDARD_OPTIONS = [
 export const DEFAULT_REGULATION_CONFIG: RegulationConfigPayload = {
   version: 'REG-PBJ-2026.04',
   lastUpdated: '2026-11-20T08:30:00+07:00',
-  sourceAuthority: 'Disinfolahtaau · Pedoman HPS LKPP & SBM Kemenkeu TA 2026',
+  sourceAuthority: 'Diskomlekau · Pedoman HPS LKPP & SBM Kemenkeu TA 2026',
   defaultPpnPercent: 11,
   recommendedOverheadRange: [10, 15],
   regulations: [
@@ -283,7 +283,7 @@ export const DEFAULT_REGULATION_CONFIG: RegulationConfigPayload = {
 
 export const INITIAL_PROJECT_PROFILE: ProjectProfile = {
   projectName: 'Sistem Informasi Kesiapan Alutsista & Logistik Skuadron (SIKAL-AU)',
-  proposingUnit: 'Disinfolahtaau — Subdis Sistem Informasi Operasi & Logistik',
+  proposingUnit: 'Diskomlekau — Subdis Sistem Informasi Operasi & Logistik',
   fiscalYear: 'TA 2026',
   procurementScheme: 'Tender / Seleksi Jasa Konsultansi Badan Usaha',
   complexity: 'Tinggi (Sistem Komando Taktis / C4ISR & Analitik Real-Time)',
@@ -315,7 +315,7 @@ export const INITIAL_PERSONNEL_ITEMS: PersonnelAllocationItem[] = [
     durationMonths: 6,
     standardRate: 31000000,
     overrideRate: null,
-    taskDescription: 'Koordinasi Satker Disinfolahtaau, kendali mutu milestone, dan pelaporan progres bulanan.',
+    taskDescription: 'Koordinasi Satker Diskomlekau, kendali mutu milestone, dan pelaporan progres bulanan.',
   },
   {
     id: 'pers-2',
@@ -474,7 +474,7 @@ export const PROJECT_PRESET_TEMPLATES: ProjectPresetTemplate[] = [
     badge: 'Skala Strategis · 8 Bulan',
     profile: {
       projectName: 'Sistem Komando Pengawasan Siber & Telemetri Terpadu (SIBER-KOHANUDNAS)',
-      proposingUnit: 'Satsiber TNI AU & Disinfolahtaau',
+      proposingUnit: 'Satsiber TNI AU & Diskomlekau',
       fiscalYear: 'TA 2026',
       procurementScheme: 'Tender / Seleksi Jasa Konsultansi Badan Usaha',
       complexity: 'Kritis / Strategis (Pertahanan Siber & Avionik Terintegrasi)',

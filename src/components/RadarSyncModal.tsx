@@ -126,7 +126,7 @@ export const RadarSyncModal: React.FC<RadarSyncModalProps> = ({
         setScanLog((prev) => [
           ...prev,
           isDefaultEndpoint
-            ? `Sinkronisasi saluran standar Disinfolahtaau (${refreshedConfig.version}) terverifikasi.`
+            ? `Sinkronisasi saluran standar Diskomlekau (${refreshedConfig.version}) terverifikasi.`
             : 'Endpoint eksternal tidak terjangkau (CORS/Offline). Menggunakan cache lokal tervalidasi.',
           `Stempel waktu diperbarui: ${formatTimestampID(refreshedConfig.lastUpdated)}`,
         ]);

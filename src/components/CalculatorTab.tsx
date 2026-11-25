@@ -270,7 +270,7 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({
               value={profile.proposingUnit}
               onChange={(e) => onChangeProfile({ ...profile, proposingUnit: e.target.value })}
               className="w-full px-3.5 py-2.5 text-sm bg-[#050c18] border border-cyan-500/30 text-white focus:outline-none focus:border-cyan-400"
-              placeholder="Contoh: Disinfolahtaau / Kohanudnas"
+              placeholder="Contoh: Diskomlekau / Kohanudnas"
             />
           </div>
 

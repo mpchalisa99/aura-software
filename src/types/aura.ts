@@ -148,7 +148,8 @@ export interface AuditAdjustmentAction {
     | 'ADJUST_PPN_PERCENT'
     | 'DEDUPLICATE_NON_PERSONNEL'
     | 'REDUCE_EXCESS_HEADCOUNT'
-    | 'ADJUST_NON_PERSONNEL_QTY';
+    | 'ADJUST_NON_PERSONNEL_QTY'
+    | 'ADD_SECURITY_COMPONENT';
   targetId?: string;
   title: string;
   rationale: string;

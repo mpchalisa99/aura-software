@@ -180,7 +180,10 @@ export default function App() {
         const parsed = JSON.parse(raw);
         const check = validateRegulationPayload(parsed);
         if (check.valid && check.payload) {
-          return check.payload;
+          return {
+            ...check.payload,
+            sourceAuthority: check.payload.sourceAuthority.replace(/disinfolahtaau/gi, 'Diskomlekau'),
+          };
         }
       }
     } catch {
@@ -271,7 +274,7 @@ export default function App() {
   // Clear AI narrative override whenever underlying calculation inputs change
   useEffect(() => {
     setAiAuditOverride(null);
-  }, [profile, personnelItems, nonPersonnelItems, financials, regulationConfig]);
+  }, [profile, personnelItems, nonPersonnelItems, financials, regulationConfig.version]);
 
   // Live Deterministic Audit Baseline
   const activeAuditReport = useMemo<AuditReportResult>(() => {
@@ -321,7 +324,7 @@ export default function App() {
     });
   });
 
-  // Load active draft if present
+  // Load active draft if present (and normalize legacy unit naming)
   useEffect(() => {
     try {
       const rawDraft = localStorage.getItem(STORAGE_KEYS.ACTIVE_DRAFT);
@@ -335,8 +338,17 @@ export default function App() {
           setProfile({
             ...INITIAL_PROJECT_PROFILE,
             ...parsed.profile,
+            proposingUnit: (parsed.profile.proposingUnit || INITIAL_PROJECT_PROFILE.proposingUnit).replace(
+              /disinfolahtaau/gi,
+              'Diskomlekau'
+            ),
           });
-          setPersonnelItems(parsed.personnelItems);
+          setPersonnelItems(
+            parsed.personnelItems.map((item: PersonnelAllocationItem) => ({
+              ...item,
+              taskDescription: (item.taskDescription || '').replace(/disinfolahtaau/gi, 'Diskomlekau'),
+            }))
+          );
           setNonPersonnelItems(parsed.nonPersonnelItems);
           if (parsed.financials) setFinancials(parsed.financials);
         }
@@ -508,14 +520,15 @@ export default function App() {
       personnelItems,
       nonPersonnelItems,
       financials,
-      adjustments
+      adjustments,
+      regulationConfig
     );
     setPersonnelItems(nextState.personnelItems);
     setNonPersonnelItems(nextState.nonPersonnelItems);
     setFinancials(nextState.financials);
     setAiAuditOverride(null);
     setSyncNotice(
-      `Berhasil menerapkan ${adjustments.length} saran koreksi terukur ke Kertas Kerja HPS/RAB.`
+      `Berhasil menerapkan ${adjustments.length} saran koreksi terukur ke Kertas Kerja HPS/RAB. Status audit diperbarui otomatis.`
     );
     setTimeout(() => setSyncNotice(null), 4000);
   };
@@ -766,7 +779,7 @@ export default function App() {
                     KORPS ELEKTRONIKA
                   </div>
                   <div className="text-xs font-mono text-cyan-300">
-                    DISINFOLAHTAAU
+                    DISKOMLEKAU
                   </div>
                 </div>
 
@@ -1043,7 +1056,17 @@ export default function App() {
                 />
               </div>
               <div className="flex items-center justify-between text-[11px] font-mono text-slate-300">
-                <span className="truncate">{activeAuditReport.status}</span>
+                <span
+                  className={`truncate font-semibold ${
+                    activeAuditReport.status === 'WAJAR / COMPLIANT'
+                      ? 'text-emerald-300'
+                      : activeAuditReport.status === 'PERINGATAN / PERLU REVIU'
+                      ? 'text-amber-300'
+                      : 'text-rose-400'
+                  }`}
+                >
+                  {activeAuditReport.status}
+                </span>
                 <span className="shrink-0">{profile.durationMonths} Bln</span>
               </div>
             </div>
