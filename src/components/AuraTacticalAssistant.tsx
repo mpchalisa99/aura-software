@@ -33,20 +33,20 @@ interface AuraTacticalAssistantProps {
 
 const QUICK_PROMPTS = [
   {
-    tier: 'TIER 1',
+    tier: 'TIER 1 · LOKAL',
     text: 'Buatkan estimasi aplikasi kalkulator sederhana & pencatatan harian',
   },
   {
-    tier: 'TIER 2',
-    text: 'Hitung RAB portal e-office & administrasi personel Lanud',
+    tier: 'TIER 2 · ToT SDM',
+    text: 'Hitung RAB portal e-office Lanud dengan keterbatasan SDM internal & perlu pendampingan transfer teknologi',
   },
   {
-    tier: 'TIER 3',
+    tier: 'TIER 3 · REAL-TIME',
     text: 'Buatkan estimasi aplikasi pelacakan pesawat real-time seperti Flightradar24',
   },
   {
-    tier: 'TIER 4',
-    text: 'Estimasi sistem komando pertahanan siber & telemetri radar 12 bulan',
+    tier: 'TIER 4 · OEM/IMPOR',
+    text: 'Estimasi software simulator pesawat tempur dengan lisensi OEM luar negeri & integrasi avionik',
   },
 ];
 
@@ -290,6 +290,33 @@ export const AuraTacticalAssistant: React.FC<AuraTacticalAssistantProps> = ({
                             msg.draftEstimate.complexityLevel.split('(')[0].trim()}
                         </span>
                       </div>
+
+                      {/* Strategic SDM & Supply Chain Profile Strip */}
+                      {(msg.draftEstimate.talentScarcityProfile ||
+                        msg.draftEstimate.supplyChainProfile ||
+                        msg.draftEstimate.knowledgeTransferIncluded) && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 font-mono text-[10px]">
+                          {msg.draftEstimate.talentScarcityProfile && (
+                            <div className="bg-[#030814] border border-cyan-500/25 px-2.5 py-1.5 text-cyan-200">
+                              <span className="text-slate-400 block">PROFIL SDM &amp; KEAHLIAN:</span>
+                              <span className="font-semibold">
+                                {msg.draftEstimate.talentScarcityProfile}
+                              </span>
+                            </div>
+                          )}
+                          {msg.draftEstimate.supplyChainProfile && (
+                            <div className="bg-[#030814] border border-amber-500/25 px-2.5 py-1.5 text-amber-200">
+                              <span className="text-slate-400 block">RANTAI PASOK &amp; LISENSI:</span>
+                              <span className="font-semibold">
+                                {msg.draftEstimate.supplyChainProfile}
+                                {msg.draftEstimate.knowledgeTransferIncluded
+                                  ? ' · + Pendampingan / ToT'
+                                  : ''}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {/* KPI Summary Grid */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-xs">

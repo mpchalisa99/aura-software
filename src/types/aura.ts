@@ -213,6 +213,9 @@ export interface DraftEstimatePayload {
   tierLabel?: string;
   complexityScore?: number;
   recommendedOverheadPercent?: number;
+  talentScarcityProfile?: string;
+  supplyChainProfile?: string;
+  knowledgeTransferIncluded?: boolean;
   durationMonths: number;
   locationFactor: number;
   highComplexityModules: string[];

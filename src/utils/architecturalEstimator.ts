@@ -245,11 +245,184 @@ export function extractRequestedMonths(userMsg: string): number | null {
   return null;
 }
 
+export type TalentScarcityLevel =
+  | 'UMUM_LUAS'
+  | 'MENENGAH_TERARAH'
+  | 'SPESIALIS_LANGKA'
+  | 'KRITIS_SANGAT_LANGKA';
+
+export type SupplyChainOrigin =
+  | 'LOKAL_OPENSOURCE'
+  | 'HIBRIDA_KOMERSIAL'
+  | 'IMPOR_OEM_KHUSUS';
+
+export interface StrategicDomainAnalysis {
+  talentScarcityLevel: TalentScarcityLevel;
+  talentScarcityProfile: string;
+  supplyChainOrigin: SupplyChainOrigin;
+  supplyChainProfile: string;
+  hasSdmConstraintOrToT: boolean;
+  isSimulatorOrAvionicsDomain: boolean;
+  isCryptoOrDefenseDomain: boolean;
+  isSpatialOrTelemetryDomain: boolean;
+}
+
+/**
+ * Analyzes strategic talent scarcity, supply chain / import / OEM dependencies,
+ * and internal SDM constraint / Knowledge Transfer requirements from user prompt.
+ */
+export function analyzeStrategicDomainContext(userMsg: string): StrategicDomainAnalysis {
+  const lower = userMsg.toLowerCase();
+
+  const isSimulatorOrAvionicsDomain =
+    lower.includes('simulator') ||
+    lower.includes('simulasi tempur') ||
+    lower.includes('pesawat tempur') ||
+    lower.includes('flight simulator') ||
+    lower.includes('kokpit') ||
+    lower.includes('cockpit') ||
+    lower.includes('flight dynamics') ||
+    lower.includes('physics engine') ||
+    lower.includes('avionik') ||
+    lower.includes('avionics') ||
+    lower.includes('hardware in the loop') ||
+    lower.includes('image generator') ||
+    lower.includes('terrain engine');
+
+  const isCryptoOrDefenseDomain =
+    lower.includes('c4isr') ||
+    lower.includes('pertahanan siber') ||
+    lower.includes('cyber defense') ||
+    lower.includes('kohanudnas') ||
+    lower.includes('sensor fusion') ||
+    lower.includes('multi-radar') ||
+    lower.includes('kriptografi') ||
+    lower.includes('satsiber') ||
+    lower.includes('hsm') ||
+    lower.includes('kelaikan') ||
+    lower.includes('sistem senjata') ||
+    lower.includes('komando pertahanan');
+
+  const isSpatialOrTelemetryDomain =
+    lower.includes('flightradar') ||
+    lower.includes('flight radar') ||
+    lower.includes('pelacakan pesawat') ||
+    lower.includes('ads-b') ||
+    lower.includes('adsb') ||
+    lower.includes('ais') ||
+    lower.includes('telemetri') ||
+    lower.includes('telemetry') ||
+    lower.includes('spasial') ||
+    lower.includes('gis') ||
+    lower.includes('radar') ||
+    lower.includes('satelit') ||
+    lower.includes('drone') ||
+    lower.includes('uav');
+
+  const hasImportOemSignals =
+    isSimulatorOrAvionicsDomain ||
+    lower.includes('impor') ||
+    lower.includes('import') ||
+    lower.includes('luar negeri') ||
+    lower.includes('oem') ||
+    lower.includes('cots') ||
+    lower.includes('vendor asing') ||
+    lower.includes('lisensi enterprise') ||
+    lower.includes('lisensi komersial') ||
+    lower.includes('perangkat khusus') ||
+    lower.includes('kelaikan') ||
+    lower.includes('sertifikasi') ||
+    lower.includes('unreal') ||
+    lower.includes('unity pro') ||
+    lower.includes('arcgis') ||
+    lower.includes('hsm') ||
+    lower.includes('hardware') ||
+    lower.includes('perangkat keras') ||
+    lower.includes('multi-radar');
+
+  const hasExplicitOpenSourceLocal =
+    lower.includes('open-source') ||
+    lower.includes('open source') ||
+    lower.includes('opensource') ||
+    lower.includes('buatan lokal') ||
+    lower.includes('murni lokal') ||
+    lower.includes('tanpa lisensi') ||
+    lower.includes('bebas lisensi');
+
+  const hasSdmConstraintOrToT =
+    lower.includes('keterbatasan sdm') ||
+    lower.includes('sdm terbatas') ||
+    lower.includes('minim sdm') ||
+    lower.includes('kurang tenaga') ||
+    lower.includes('kekurangan tenaga') ||
+    lower.includes('sdm internal') ||
+    lower.includes('transfer teknologi') ||
+    lower.includes('knowledge transfer') ||
+    lower.includes('alih teknologi') ||
+    lower.includes('pendampingan') ||
+    lower.includes('pelatihan') ||
+    lower.includes('training') ||
+    lower.includes('bimtek') ||
+    lower.includes('tot') ||
+    lower.includes('belum siap') ||
+    lower.includes('upskilling');
+
+  const tierMeta = classifyArchitecturalTier(userMsg);
+
+  let talentScarcityLevel: TalentScarcityLevel = 'MENENGAH_TERARAH';
+  let talentScarcityProfile = 'SDM Pengembangan Sistem Terstruktur (Ketersediaan Menengah)';
+
+  if (tierMeta.tier === 'TIER 1') {
+    talentScarcityLevel = 'UMUM_LUAS';
+    talentScarcityProfile = 'SDM Umum / Ketersediaan Luas (Web, UI, CRUD Standar)';
+  } else if (tierMeta.tier === 'TIER 3') {
+    talentScarcityLevel = 'SPESIALIS_LANGKA';
+    talentScarcityProfile =
+      'SDM Spesialis Langka (Real-Time Stream, Spasial/GIS, Data & Cloud HA)';
+  } else if (tierMeta.tier === 'TIER 4') {
+    talentScarcityLevel = 'KRITIS_SANGAT_LANGKA';
+    talentScarcityProfile = isSimulatorOrAvionicsDomain
+      ? 'SDM Kritis Sangat Langka (Avionik, Fisika Komputasi, Simulasi 3D & Kelaikan)'
+      : 'SDM Kritis Sangat Langka (Arsitek C4ISR, Kriptografi Militer & Sensor Fusion)';
+  }
+
+  let supplyChainOrigin: SupplyChainOrigin = 'LOKAL_OPENSOURCE';
+  let supplyChainProfile = 'Pengembangan Lokal / Stack Open-Source Standar';
+
+  if (hasImportOemSignals && !hasExplicitOpenSourceLocal && (tierMeta.tier === 'TIER 4' || isSimulatorOrAvionicsDomain)) {
+    supplyChainOrigin = 'IMPOR_OEM_KHUSUS';
+    supplyChainProfile =
+      'Ketergantungan Impor / Lisensi OEM Khusus, Perangkat/Sensor & Sertifikasi Kelaikan';
+  } else if (
+    (hasImportOemSignals && !hasExplicitOpenSourceLocal) ||
+    tierMeta.tier === 'TIER 3' ||
+    tierMeta.tier === 'TIER 4'
+  ) {
+    supplyChainOrigin =
+      tierMeta.tier === 'TIER 4' ? 'IMPOR_OEM_KHUSUS' : 'HIBRIDA_KOMERSIAL';
+    supplyChainProfile =
+      supplyChainOrigin === 'IMPOR_OEM_KHUSUS'
+        ? 'Ketergantungan Impor / Lisensi OEM Khusus, Perangkat/Sensor & Sertifikasi Kelaikan'
+        : 'Hibrida (Pengembangan Lokal + Lisensi Komersial Map/Feed/Cloud HA)';
+  }
+
+  return {
+    talentScarcityLevel,
+    talentScarcityProfile,
+    supplyChainOrigin,
+    supplyChainProfile,
+    hasSdmConstraintOrToT,
+    isSimulatorOrAvionicsDomain,
+    isCryptoOrDefenseDomain,
+    isSpatialOrTelemetryDomain,
+  };
+}
+
 /**
  * Intelligent 4-Tier Architectural Classifier.
  * Sharply separates utility/simple apps (Tier 1) from standard Satker portals (Tier 2),
  * real-time spatial/telemetry platforms like Flightradar24 (Tier 3),
- * and strategic C4ISR / cyber defense systems (Tier 4).
+ * and strategic C4ISR / cyber defense / fighter avionics simulator systems (Tier 4).
  */
 export function classifyArchitecturalTier(userMsg: string): ArchitecturalTierMeta {
   const lower = userMsg.toLowerCase();
@@ -266,6 +439,14 @@ export function classifyArchitecturalTier(userMsg: string): ArchitecturalTierMet
     'pertahanan udara',
     'kriptografi militer',
     'avionik',
+    'avionics',
+    'pesawat tempur',
+    'simulator pesawat tempur',
+    'flight simulator',
+    'simulasi tempur',
+    'hardware in the loop',
+    'kokpit',
+    'cockpit',
     'satsiber',
     'peperangan elektronika',
     'strategis',
@@ -307,6 +488,9 @@ export function classifyArchitecturalTier(userMsg: string): ArchitecturalTierMet
     'drone',
     'uav',
     'satelit',
+    'simulator',
+    'simulasi',
+    'physics engine',
   ];
 
   const tier1UltraSimpleKeywords = [
@@ -388,7 +572,7 @@ export function classifyArchitecturalTier(userMsg: string): ArchitecturalTierMet
     lower.includes('lanud') ||
     lower.includes('satker');
 
-  // Explicit Tier 4 triggers (strategic defense, C4ISR, cyber defense + telemetry, sensor fusion)
+  // Explicit Tier 4 triggers (strategic defense, C4ISR, cyber defense + telemetry, sensor fusion, combat/avionics simulator)
   if (
     t4Hits >= 1 &&
     (t4Hits >= 2 ||
@@ -399,11 +583,19 @@ export function classifyArchitecturalTier(userMsg: string): ArchitecturalTierMet
       lower.includes('kohanudnas') ||
       lower.includes('kriptografi militer') ||
       lower.includes('avionik') ||
+      lower.includes('pesawat tempur') ||
+      lower.includes('flight simulator') ||
+      lower.includes('kokpit') ||
+      lower.includes('cockpit') ||
       (lower.includes('pertahanan') && (lower.includes('radar') || lower.includes('siber') || lower.includes('telemetri'))))
   ) {
+    const isAvionicsSim =
+      lower.includes('simulator') || lower.includes('pesawat tempur') || lower.includes('avionik') || lower.includes('kokpit');
     return {
       tier: 'TIER 4',
-      tierLabel: 'TIER 4 · STRATEGIS / C4ISR & PERTAHANAN SIBER',
+      tierLabel: isAvionicsSim
+        ? 'TIER 4 · SIMULATOR TEMPUR, AVIONIK & PERTAHANAN KRITIS'
+        : 'TIER 4 · STRATEGIS / C4ISR & PERTAHANAN SIBER',
       complexityLevel: 'Kritis / Strategis (Pertahanan Siber & Avionik Terintegrasi)',
       procurementScheme: 'Tender / Seleksi Jasa Konsultansi Badan Usaha',
       complexityScore: 95,
@@ -414,7 +606,7 @@ export function classifyArchitecturalTier(userMsg: string): ArchitecturalTierMet
     };
   }
 
-  // Explicit Tier 3 triggers (Flightradar24, real-time tracking, GIS spatial, ADS-B, telemetry, AI)
+  // Explicit Tier 3 triggers (Flightradar24, real-time tracking, GIS spatial, ADS-B, telemetry, AI, tactical simulation)
   if (t3Hits >= 1) {
     return {
       tier: 'TIER 3',
@@ -666,6 +858,8 @@ export function normalizeDraftEstimate(
       ? Math.round(rawScore)
       : defaultScoreMap[tierCode];
 
+  const strategicContext = analyzeStrategicDomainContext(userMsg);
+
   return {
     projectName: (rawDraft.projectName || '').trim() || `Estimasi Proyek: ${userMsg.slice(0, 60)}`,
     proposingUnit:
@@ -682,6 +876,14 @@ export function normalizeDraftEstimate(
         : tierCode === 'TIER 4'
         ? 12
         : 10,
+    talentScarcityProfile:
+      (rawDraft.talentScarcityProfile || '').trim() || strategicContext.talentScarcityProfile,
+    supplyChainProfile:
+      (rawDraft.supplyChainProfile || '').trim() || strategicContext.supplyChainProfile,
+    knowledgeTransferIncluded:
+      typeof rawDraft.knowledgeTransferIncluded === 'boolean'
+        ? rawDraft.knowledgeTransferIncluded
+        : strategicContext.hasSdmConstraintOrToT || tierCode === 'TIER 3' || tierCode === 'TIER 4',
     durationMonths,
     locationFactor:
       Number.isFinite(Number(rawDraft.locationFactor)) && Number(rawDraft.locationFactor) > 0
@@ -717,6 +919,7 @@ export function generateDeterministicArchitecturalEstimate(
   const activeConfig =
     regulationConfig?.roleTariffs?.length > 0 ? regulationConfig : DEFAULT_REGULATION_CONFIG;
   const meta = classifyArchitecturalTier(userMsg);
+  const domainCtx = analyzeStrategicDomainContext(userMsg);
   const lower = userMsg.toLowerCase();
 
   const requestedMonths = extractRequestedMonths(userMsg);
@@ -797,6 +1000,17 @@ export function generateDeterministicArchitecturalEstimate(
           },
         ];
 
+    if (domainCtx.hasSdmConstraintOrToT) {
+      personnel.push({
+        roleId: 'role-tw',
+        roleName: 'Technical Writer & Trainer',
+        tier: 'Junior',
+        headcount: 1,
+        durationMonths: 0.5,
+        taskDescription: 'Pendampingan operasional awal, penyusunan panduan ringkas, dan transfer pengetahuan ke operator Satker.',
+      });
+    }
+
     const nonPersonnel: DraftEstimateNonPersonnel[] = [
       {
         category: 'Server / Cloud',
@@ -804,15 +1018,19 @@ export function generateDeterministicArchitecturalEstimate(
         quantity: duration,
         unit: 'Bulan',
         unitPrice: meta.isUltraSimple ? 1500000 : 2500000,
-        notes: 'Kebutuhan komputasi ringan tanpa klaster terdistribusi',
+        notes: 'Kebutuhan komputasi ringan berbasis open-source tanpa klaster terdistribusi',
       },
       {
         category: 'Dokumentasi',
-        itemName: 'Panduan Pengguna Singkat (User Guide) & Manual Instalasi',
+        itemName: domainCtx.hasSdmConstraintOrToT
+          ? 'Panduan Pengguna & Sesi Pendampingan Operator Internal (Knowledge Transfer)'
+          : 'Panduan Pengguna Singkat (User Guide) & Manual Instalasi',
         quantity: 1,
         unit: 'Kegiatan',
-        unitPrice: meta.isUltraSimple ? 3500000 : 5000000,
-        notes: 'Dokumentasi operasional dasar dan serah terima kode sumber',
+        unitPrice: domainCtx.hasSdmConstraintOrToT ? 6500000 : meta.isUltraSimple ? 3500000 : 5000000,
+        notes: domainCtx.hasSdmConstraintOrToT
+          ? 'Pelatihan langsung operator internal agar sistem mandiri dioperasikan tanpa menambah tim pengembang'
+          : 'Dokumentasi operasional dasar dan serah terima kode sumber',
       },
     ];
 
@@ -825,6 +1043,9 @@ export function generateDeterministicArchitecturalEstimate(
       tierLabel: meta.tierLabel,
       complexityScore: meta.complexityScore,
       recommendedOverheadPercent: meta.recommendedOverheadPercent,
+      talentScarcityProfile: domainCtx.talentScarcityProfile,
+      supplyChainProfile: domainCtx.supplyChainProfile,
+      knowledgeTransferIncluded: domainCtx.hasSdmConstraintOrToT,
       durationMonths: duration,
       locationFactor: 1.0,
       highComplexityModules: [],
@@ -835,10 +1056,11 @@ export function generateDeterministicArchitecturalEstimate(
     };
 
     rationaleBody =
-      `Rasionalisasi Arsitektur (TIER 1 — Skor ${meta.complexityScore}/100): ` +
-      `Kebutuhan ini diklasifikasikan sebagai aplikasi utilitas/standar dengan logika deterministik ringan. ` +
-      `Struktur biaya tetap hemat karena TIDAK membutuhkan pipeline data real-time, lisensi GIS/peta spasial, arsitek sistem terdistribusi, AI Engineer, maupun klaster server berskala besar. ` +
-      `Cukup ditangani tim ringkas (${personnel.length} personel kualifikasi Junior–Middle) selama ${duration} bulan dengan skema Pengadaan Langsung.`;
+      `• **Penalaran SDM & Kelangkaan Keahlian**: Kebutuhan ini bertumpu pada peran pengembangan umum (UI dasar, CRUD standar, dan pengujian fungsional) yang ketersediaan talentanya luas di pasar lokal. Komposisi dijaga ramping (${personnel.length} personel kualifikasi Junior–Middle selama ${duration} bulan) tanpa membengkakkan OB maupun melibatkan spesialis langka seperti AI Engineer atau Arsitek Terdistribusi.` +
+      (domainCtx.hasSdmConstraintOrToT
+        ? ` Karena terdeteksi kebutuhan pendampingan/keterbatasan SDM internal, ditambahkan alokasi *Technical Writer & Trainer* (0,5 OB) dan paket *Knowledge Transfer* agar operator Satker mandiri tanpa perlu tim pengembang besar.`
+        : '') +
+      `\n• **Penalaran Rantai Pasok & Domain (Lokal / Open-Source)**: Aplikasi dibangun murni secara lokal menggunakan ekosistem *open-source* standar sehingga **nol komponen impor, nol royalti lisensi OEM luar negeri, dan tanpa integrasi perangkat keras/sensor khusus**. Biaya non-personel cukup mencakup hosting ringan dan dokumentasi dasar (Pengadaan Langsung).`;
   } else if (meta.tier === 'TIER 2') {
     const isEoffice = lower.includes('e-office') || lower.includes('eoffice') || lower.includes('surat') || lower.includes('administrasi');
     const isInventory = lower.includes('inventori') || lower.includes('logistik') || lower.includes('aset') || lower.includes('gudang');
@@ -848,6 +1070,10 @@ export function generateDeterministicArchitecturalEstimate(
       : isInventory
       ? 'Sistem Informasi Manajemen Inventori & Logistik Satker TNI AU'
       : `Sistem Informasi Portal Layanan Satker: ${userMsg.slice(0, 48)}`;
+
+    const twDuration = domainCtx.hasSdmConstraintOrToT
+      ? scaleDur(0.75, 2)
+      : scaleDur(0.5, 2);
 
     const personnel: DraftEstimatePersonnel[] = [
       {
@@ -903,8 +1129,10 @@ export function generateDeterministicArchitecturalEstimate(
         roleName: 'Technical Writer & Trainer',
         tier: 'Middle',
         headcount: 1,
-        durationMonths: scaleDur(0.5, 2),
-        taskDescription: 'Penyusunan dokumen BPO, manual admin, dan pelatihan operator Satker/Lanud.',
+        durationMonths: twDuration,
+        taskDescription: domainCtx.hasSdmConstraintOrToT
+          ? 'Penyusunan dokumen BPO, pendampingan intensif (ToT), dan transfer teknologi terstruktur ke staf operator Satker.'
+          : 'Penyusunan dokumen BPO, manual admin, dan pelatihan operator Satker/Lanud.',
       },
     ];
 
@@ -927,11 +1155,15 @@ export function generateDeterministicArchitecturalEstimate(
       },
       {
         category: 'Dokumentasi',
-        itemName: 'Cetak Dokumen KAK/SRS/SDD/BPO & Workshop Pelatihan Operator',
-        quantity: 1,
+        itemName: domainCtx.hasSdmConstraintOrToT
+          ? 'Dokumen KAK/SRS/SDD/BPO, Bimtek Operator & Pendampingan Transfer Teknologi (ToT)'
+          : 'Cetak Dokumen KAK/SRS/SDD/BPO & Workshop Pelatihan Operator',
+        quantity: domainCtx.hasSdmConstraintOrToT ? 2 : 1,
         unit: 'Kegiatan',
         unitPrice: 16500000,
-        notes: 'Acuan SBM Kemenkeu TA 2026',
+        notes: domainCtx.hasSdmConstraintOrToT
+          ? 'Penguatan kapasitas SDM internal Satker untuk kemandirian operasional pasca serah terima'
+          : 'Acuan SBM Kemenkeu TA 2026',
       },
       {
         category: 'SLA & Pemeliharaan',
@@ -952,6 +1184,9 @@ export function generateDeterministicArchitecturalEstimate(
       tierLabel: meta.tierLabel,
       complexityScore: meta.complexityScore,
       recommendedOverheadPercent: meta.recommendedOverheadPercent,
+      talentScarcityProfile: domainCtx.talentScarcityProfile,
+      supplyChainProfile: domainCtx.supplyChainProfile,
+      knowledgeTransferIncluded: domainCtx.hasSdmConstraintOrToT,
       durationMonths: duration,
       locationFactor: 1.0,
       highComplexityModules: [],
@@ -962,9 +1197,11 @@ export function generateDeterministicArchitecturalEstimate(
     };
 
     rationaleBody =
-      `Rasionalisasi Arsitektur (TIER 2 — Skor ${meta.complexityScore}/100): ` +
-      `Sistem ini merupakan portal operasional multi-pengguna tingkat Satker/Lanud dengan alur persetujuan, manajemen dokumen/inventori, serta integrasi autentikasi SSO/TTE. ` +
-      `Biaya disusun secara proporsional menggunakan tim penuh siklus SDLC (7 tenaga ahli kualifikasi Middle selama ${duration} bulan) dan infrastruktur cloud standar — tanpa membebankan komponen mahal seperti klaster GPU/AI, lisensi radar, atau arsitektur stream berkecepatan tinggi.`;
+      `• **Penalaran SDM & Kelangkaan Keahlian**: Portal operasional tingkat Satker/Lanud memerlukan disiplin SDLC penuh (analisis bisnis, RBAC, disposisi, integrasi SSO/TTE BSrE), namun tetap dapat ditangani tenaga ahli kualifikasi **Middle** yang ketersediaan talentanya cukup baik di pasar nasional. Tim dijaga proporsional (7 personel selama ${duration} bulan) agar koordinasi efektif tanpa pemborosan.` +
+      (domainCtx.hasSdmConstraintOrToT
+        ? ` Mengingat adanya catatan **keterbatasan SDM internal / kebutuhan pendampingan**, porsi *Technical Writer & Trainer* diperkuat (${twDuration} OB) dan paket *Workshop/ToT* ditetapkan 2 kegiatan untuk menjamin alih teknologi tuntas tanpa membentuk tim engineering raksasa yang tidak efisien.`
+        : '') +
+      `\n• **Penalaran Rantai Pasok & Domain (Lokal / Open-Source)**: Sistem dikembangkan secara lokal di atas arsitektur web/open-source dan standar SPBE Indonesia tanpa ketergantungan lisensi OEM asing maupun perangkat sensor khusus. Karena itu struktur biaya didominasi jasa keahlian SDLC lokal dan komputasi VPS standar (tanpa klaster GPU atau royalti perangkat lunak impor).`;
   } else if (meta.tier === 'TIER 3') {
     const isFlightTracker =
       lower.includes('flightradar') ||
@@ -976,6 +1213,10 @@ export function generateDeterministicArchitecturalEstimate(
     const projectName = isFlightTracker
       ? 'Sistem Pelacakan Pesawat & Telemetri Penerbangan Real-Time (Tactical FlightTracker)'
       : `Sistem Telemetri Spasial & Pemrosesan Real-Time: ${userMsg.slice(0, 46)}`;
+
+    const twDuration = domainCtx.hasSdmConstraintOrToT
+      ? scaleDur(0.7, 6)
+      : scaleDur(0.5, 4);
 
     const personnel: DraftEstimatePersonnel[] = [
       {
@@ -1055,8 +1296,10 @@ export function generateDeterministicArchitecturalEstimate(
         roleName: 'Technical Writer & Trainer',
         tier: 'Middle',
         headcount: 1,
-        durationMonths: scaleDur(0.5, 4),
-        taskDescription: 'Dokumentasi arsitektur API/stream, Buku Pedoman Operator, dan transfer teknologi.',
+        durationMonths: twDuration,
+        taskDescription: domainCtx.hasSdmConstraintOrToT
+          ? 'Dokumentasi API/stream, buku pedoman operator, dan program transfer teknologi intensif ke personel Satker.'
+          : 'Dokumentasi arsitektur API/stream, Buku Pedoman Operator, dan transfer teknologi.',
       },
     ];
 
@@ -1075,7 +1318,7 @@ export function generateDeterministicArchitecturalEstimate(
         quantity: 1,
         unit: 'Paket / Tahun',
         unitPrice: 85000000,
-        notes: 'Lisensi komersial rendering peta taktis dan sumber data lintasan',
+        notes: 'Lisensi komersial/OEM rendering peta taktis dan sumber data lintasan penerbangan',
       },
       {
         category: 'Integrasi API',
@@ -1095,11 +1338,11 @@ export function generateDeterministicArchitecturalEstimate(
       },
       {
         category: 'Dokumentasi',
-        itemName: 'Dokumen Arsitektur Teknis, SRS/SDD, BPO & Workshop Operator',
-        quantity: 2,
+        itemName: 'Dokumen Arsitektur Teknis, SRS/SDD, BPO & Workshop Transfer Teknologi Operator',
+        quantity: domainCtx.hasSdmConstraintOrToT ? 3 : 2,
         unit: 'Kegiatan',
         unitPrice: 16500000,
-        notes: 'Acuan SBM Kemenkeu TA 2026',
+        notes: 'Acuan SBM Kemenkeu TA 2026 termasuk pendampingan alih pengetahuan',
       },
       {
         category: 'SLA & Pemeliharaan',
@@ -1120,6 +1363,9 @@ export function generateDeterministicArchitecturalEstimate(
       tierLabel: meta.tierLabel,
       complexityScore: meta.complexityScore,
       recommendedOverheadPercent: meta.recommendedOverheadPercent,
+      talentScarcityProfile: domainCtx.talentScarcityProfile,
+      supplyChainProfile: domainCtx.supplyChainProfile,
+      knowledgeTransferIncluded: true,
       durationMonths: duration,
       locationFactor: 1.0,
       highComplexityModules: [
@@ -1140,159 +1386,307 @@ export function generateDeterministicArchitecturalEstimate(
     };
 
     rationaleBody =
-      `Rasionalisasi Arsitektur (TIER 3 — Skor ${meta.complexityScore}/100): ` +
-      `Sistem pelacakan/telemetri real-time berarsitektur kompleks (setara Flightradar24 / GIS Spasial) membutuhkan pemrosesan stream koordinat ribuan objek secara simultan berlatensi rendah, rendering peta taktis interaktif berkecepatan tinggi di Web & Mobile, serta klaster server High-Availability. ` +
-      `Oleh karena itu dibutuhkan tim spesialis lengkap (14 tenaga ahli Senior–Lead termasuk Data/Telemetry Engineer, Mobile Dev, GIS Frontend, dan DevOps Cluster selama ${duration} bulan) beserta lisensi map engine/feed data dan uji beban/pentest.`;
+      `• **Penalaran SDM & Kelangkaan Keahlian**: Berbeda dari aplikasi CRUD umum, sistem telemetri real-time & spasial (setara Flightradar24 / pemrosesan ADS-B) menuntut keahlian langka: *Lead Solution Architect* untuk pola event-driven berlatensi rendah, *Data/Telemetry Engineer*, *GIS WebGL Frontend*, serta *DevOps Cluster High-Availability*. Kualifikasi **Senior–Lead** dan durasi integrasi–uji beban ${duration} bulan diperlukan karena kurva belajar domain penerbangan/stream yang curam serta keterbatasan SDM dengan rekam jejak serupa.` +
+      (domainCtx.hasSdmConstraintOrToT
+        ? ` Alokasi *Technical Writer & Trainer* (${twDuration} OB) dan 3 sesi workshop ToT ditambahkan agar tim internal Lanud/Satker mampu mengoperasikan sistem pasca serah terima.`
+        : '') +
+      `\n• **Penalaran Rantai Pasok, Lisensi & Domain**: Biaya tidak hanya berasal dari penulisan kode lokal, melainkan juga dipicu struktur rantai pasok **hibrida/komersial**: lisensi komersial/OEM Map Engine & feed data ADS-B/telemetri, gateway protokol sensor, klaster server HA 24/7, serta uji beban ribuan objek simultan.`;
   } else {
-    // TIER 4 — STRATEGIS / PERTAHANAN SIBER & C4ISR KRITIS
-    const projectName =
-      lower.includes('siber') || lower.includes('cyber')
-        ? 'Sistem Komando Pertahanan Siber, Telemetri Multi-Radar & C4ISR Terpadu TNI AU'
-        : 'Sistem Komando Pertahanan Udara Terintegrasi & Sensor Fusion C4ISR Strategis';
+    // TIER 4 — STRATEGIS / PERTAHANAN SIBER, C4ISR, ATAU SIMULATOR PESAWAT TEMPUR & AVIONIK
+    const isSim = domainCtx.isSimulatorOrAvionicsDomain;
 
-    const personnel: DraftEstimatePersonnel[] = [
-      {
-        roleId: 'role-pm',
-        roleName: 'Project Manager / Team Leader',
-        tier: 'Lead / Principal',
-        headcount: 1,
-        durationMonths: duration,
-        taskDescription: 'Pimpinan program strategis pertahanan, tata kelola kontrak kompleks, dan kepatuhan regulasi.',
-      },
-      {
-        roleId: 'role-sa',
-        roleName: 'System Analyst / Solution Architect',
-        tier: 'Lead / Principal',
-        headcount: 2,
-        durationMonths: scaleDur(0.92, 10),
-        taskDescription: 'Perancangan arsitektur C4ISR terdistribusi, zero-trust network, dan kriptografi berlapis.',
-      },
-      {
-        roleId: 'role-uiux',
-        roleName: 'UI/UX Designer (Tactical Interface)',
-        tier: 'Senior',
-        headcount: 1,
-        durationMonths: scaleDur(0.6, 7),
-        taskDescription: 'Desain antarmuka ruang komando (command center wall display) & HUD taktis militer.',
-      },
-      {
-        roleId: 'role-backend',
-        roleName: 'Backend Developer',
-        tier: 'Senior',
-        headcount: 4,
-        durationMonths: scaleDur(0.92, 10),
-        taskDescription: 'Engine inti sensor fusion multi-radar, korelasi insiden siber real-time, dan audit trail imutabel.',
-      },
-      {
-        roleId: 'role-frontend',
-        roleName: 'Frontend Developer',
-        tier: 'Senior',
-        headcount: 2,
-        durationMonths: scaleDur(0.88, 10),
-        taskDescription: 'Visualisasi peta operasi udara multi-layer, dashboard SOC pertahanan, dan panel kendali.',
-      },
-      {
-        roleId: 'role-mobile',
-        roleName: 'Mobile Developer (Android / iOS)',
-        tier: 'Senior',
-        headcount: 1,
-        durationMonths: scaleDur(0.75, 8),
-        taskDescription: 'Aplikasi taktis lapangan terenkripsi dengan sinkronisasi offline-first antar pangkalan.',
-      },
-      {
-        roleId: 'role-ai-data',
-        roleName: 'AI / Data Engineer',
-        tier: 'Lead / Principal',
-        headcount: 3,
-        durationMonths: scaleDur(0.88, 10),
-        taskDescription: 'Model AI deteksi anomali ancaman siber, fusi data multi-sensor radar, dan analitik prediktif.',
-      },
-      {
-        roleId: 'role-qa-sec',
-        roleName: 'QA & Security Tester (AppSec)',
-        tier: 'Lead / Principal',
-        headcount: 2,
-        durationMonths: scaleDur(0.8, 9),
-        taskDescription: 'Red-teaming internal, audit kriptografi, pengujian penetrasi berkelanjutan, dan stress test ekstrem.',
-      },
-      {
-        roleId: 'role-devops',
-        roleName: 'DevOps & Cloud Infrastructure Engineer',
-        tier: 'Lead / Principal',
-        headcount: 2,
-        durationMonths: scaleDur(0.88, 10),
-        taskDescription: 'Orkestrasi cluster bare-metal on-premise terisolasi (air-gapped), DevSecOps, dan DRC.',
-      },
-      {
-        roleId: 'role-tw',
-        roleName: 'Technical Writer & Trainer',
-        tier: 'Senior',
-        headcount: 1,
-        durationMonths: scaleDur(0.6, 7),
-        taskDescription: 'Penyusunan dokumen teknis rahasia, SOP operasi komando, dan transfer teknologi lintas Lanud.',
-      },
-    ];
+    const projectName = isSim
+      ? 'Sistem Perangkat Lunak Simulator Pesawat Tempur, Visualisasi Kokpit 3D & Integrasi Avionik'
+      : lower.includes('siber') || lower.includes('cyber')
+      ? 'Sistem Komando Pertahanan Siber, Telemetri Multi-Radar & C4ISR Terpadu TNI AU'
+      : 'Sistem Komando Pertahanan Udara Terintegrasi & Sensor Fusion C4ISR Strategis';
 
-    const nonPersonnel: DraftEstimateNonPersonnel[] = [
-      {
-        category: 'Server / Cloud',
-        itemName: 'Klaster Server On-Premise Bare-Metal / GPU Compute Node & Air-Gapped Staging',
-        quantity: duration,
-        unit: 'Bulan',
-        unitPrice: 28000000,
-        notes: 'Infrastruktur komputasi terisolasi berkeandalan tinggi untuk pelatihan AI & simulasi radar',
-      },
-      {
-        category: 'Lisensi',
-        itemName: 'Lisensi Enterprise Sensor Fusion, Tactical GIS Militer & Modul HSM Kriptografi',
-        quantity: 1,
-        unit: 'Paket / Tahun',
-        unitPrice: 145000000,
-        notes: 'Lisensi perangkat lunak pemetaan militer dan pengamanan kunci kriptografi',
-      },
-      {
-        category: 'Integrasi API',
-        itemName: 'Gateway Protokol Taktis Multi-Radar, Link Enkripsi & Integrasi Lintas Komando',
-        quantity: 2,
-        unit: 'Paket',
-        unitPrice: 45000000,
-        notes: 'Interoperabilitas protokol sensor militer dan replikasi multi-pangkalan',
-      },
-      {
-        category: 'Security Testing',
-        itemName: 'Audit Kriptografi, Red-Teaming & Sertifikasi Kelaikan Siber Independen (BSSN/ITSec)',
-        quantity: 2,
-        unit: 'Paket',
-        unitPrice: 65000000,
-        notes: 'Verifikasi kelaikan pertahanan siber berlapis sebelum operasionalisasi',
-      },
-      {
-        category: 'Dokumentasi',
-        itemName: 'Dokumen KAK/SRS/SDD/SOP Operasi & Workshop Transfer Teknologi Multi-Lanud',
-        quantity: 3,
-        unit: 'Kegiatan',
-        unitPrice: 22000000,
-        notes: 'Pelatihan intensif operator komando, tim Satsiber, dan administrator sistem',
-      },
-      {
-        category: 'SLA & Pemeliharaan',
-        itemName: 'Dukungan On-Site Engineer & Pemeliharaan Kritis 24/7 SLA 99.99% (12 Bulan)',
-        quantity: 1,
-        unit: 'Paket / Tahun',
-        unitPrice: 95000000,
-        notes: 'Respons insiden kritis < 15 menit & pembaruan patch keamanan berkala',
-      },
-    ];
+    const twDuration = domainCtx.hasSdmConstraintOrToT
+      ? scaleDur(0.75, 8)
+      : scaleDur(0.6, 7);
+
+    const personnel: DraftEstimatePersonnel[] = isSim
+      ? [
+          {
+            roleId: 'role-pm',
+            roleName: 'Project Manager / Team Leader',
+            tier: 'Lead / Principal',
+            headcount: 1,
+            durationMonths: duration,
+            taskDescription: 'Manajemen program strategis alutsista/simulator, koordinasi OEM luar negeri, dan tata kelola kelaikan.',
+          },
+          {
+            roleId: 'role-sa',
+            roleName: 'System Analyst / Solution Architect',
+            tier: 'Lead / Principal',
+            headcount: 2,
+            durationMonths: scaleDur(0.92, 10),
+            taskDescription: 'Arsitektur simulasi real-time deterministik (60Hz+), integrasi bus avionik MIL-STD-1553/ARINC-429 & HIL.',
+          },
+          {
+            roleId: 'role-uiux',
+            roleName: 'UI/UX Designer (Tactical Interface)',
+            tier: 'Senior',
+            headcount: 1,
+            durationMonths: scaleDur(0.65, 7),
+            taskDescription: 'Perancangan instrumen kokpit (MFD/HUD), konsol instruktur (IOS), dan ergonomi antarmuka penerbang.',
+          },
+          {
+            roleId: 'role-backend',
+            roleName: 'Backend Developer',
+            tier: 'Senior',
+            headcount: 3,
+            durationMonths: scaleDur(0.92, 10),
+            taskDescription: 'Pengembangan middleware sinkronisasi kokpit, perekaman misi (debriefing), dan modul logika taktis/senjata.',
+          },
+          {
+            roleId: 'role-frontend',
+            roleName: 'Frontend Developer',
+            tier: 'Senior',
+            headcount: 2,
+            durationMonths: scaleDur(0.88, 10),
+            taskDescription: 'Visualisasi 3D out-the-window (OTW), tampilan konsol instruktur, dan pemantauan telemetri latihan.',
+          },
+          {
+            roleId: 'role-ai-data',
+            roleName: 'AI / Data Engineer',
+            tier: 'Lead / Principal',
+            headcount: 3,
+            durationMonths: scaleDur(0.92, 10),
+            taskDescription: 'Pemodelan fisika komputasi aerodinamika (flight dynamics), agen lawan cerdas (CGF), dan korelasi sensor.',
+          },
+          {
+            roleId: 'role-qa-sec',
+            roleName: 'QA & Security Tester (AppSec)',
+            tier: 'Lead / Principal',
+            headcount: 2,
+            durationMonths: scaleDur(0.85, 9),
+            taskDescription: 'Pengujian kelaikan deterministik waktu-nyata, verifikasi keamanan siber/kriptografi, dan uji integrasi HIL.',
+          },
+          {
+            roleId: 'role-devops',
+            roleName: 'DevOps & Cloud Infrastructure Engineer',
+            tier: 'Lead / Principal',
+            headcount: 2,
+            durationMonths: scaleDur(0.85, 9),
+            taskDescription: 'Konfigurasi klaster workstation GPU terisolasi (air-gapped), sinkronisasi frame antar-node, dan DRC.',
+          },
+          {
+            roleId: 'role-tw',
+            roleName: 'Technical Writer & Trainer',
+            tier: 'Senior',
+            headcount: 2,
+            durationMonths: twDuration,
+            taskDescription: 'Penyusunan manual kelaikan/SOP instruktur dan program Transfer Teknologi (ToT) intensif ke teknisi Skadron.',
+          },
+        ]
+      : [
+          {
+            roleId: 'role-pm',
+            roleName: 'Project Manager / Team Leader',
+            tier: 'Lead / Principal',
+            headcount: 1,
+            durationMonths: duration,
+            taskDescription: 'Pimpinan program strategis pertahanan, tata kelola kontrak kompleks, dan kepatuhan regulasi.',
+          },
+          {
+            roleId: 'role-sa',
+            roleName: 'System Analyst / Solution Architect',
+            tier: 'Lead / Principal',
+            headcount: 2,
+            durationMonths: scaleDur(0.92, 10),
+            taskDescription: 'Perancangan arsitektur C4ISR terdistribusi, zero-trust network, dan kriptografi berlapis.',
+          },
+          {
+            roleId: 'role-uiux',
+            roleName: 'UI/UX Designer (Tactical Interface)',
+            tier: 'Senior',
+            headcount: 1,
+            durationMonths: scaleDur(0.6, 7),
+            taskDescription: 'Desain antarmuka ruang komando (command center wall display) & HUD taktis militer.',
+          },
+          {
+            roleId: 'role-backend',
+            roleName: 'Backend Developer',
+            tier: 'Senior',
+            headcount: 4,
+            durationMonths: scaleDur(0.92, 10),
+            taskDescription: 'Engine inti sensor fusion multi-radar, korelasi insiden siber real-time, dan audit trail imutabel.',
+          },
+          {
+            roleId: 'role-frontend',
+            roleName: 'Frontend Developer',
+            tier: 'Senior',
+            headcount: 2,
+            durationMonths: scaleDur(0.88, 10),
+            taskDescription: 'Visualisasi peta operasi udara multi-layer, dashboard SOC pertahanan, dan panel kendali.',
+          },
+          {
+            roleId: 'role-mobile',
+            roleName: 'Mobile Developer (Android / iOS)',
+            tier: 'Senior',
+            headcount: 1,
+            durationMonths: scaleDur(0.75, 8),
+            taskDescription: 'Aplikasi taktis lapangan terenkripsi dengan sinkronisasi offline-first antar pangkalan.',
+          },
+          {
+            roleId: 'role-ai-data',
+            roleName: 'AI / Data Engineer',
+            tier: 'Lead / Principal',
+            headcount: 3,
+            durationMonths: scaleDur(0.88, 10),
+            taskDescription: 'Model AI deteksi anomali ancaman siber, fusi data multi-sensor radar, dan analitik prediktif.',
+          },
+          {
+            roleId: 'role-qa-sec',
+            roleName: 'QA & Security Tester (AppSec)',
+            tier: 'Lead / Principal',
+            headcount: 2,
+            durationMonths: scaleDur(0.8, 9),
+            taskDescription: 'Red-teaming internal, audit kriptografi, pengujian penetrasi berkelanjutan, dan stress test ekstrem.',
+          },
+          {
+            roleId: 'role-devops',
+            roleName: 'DevOps & Cloud Infrastructure Engineer',
+            tier: 'Lead / Principal',
+            headcount: 2,
+            durationMonths: scaleDur(0.88, 10),
+            taskDescription: 'Orkestrasi cluster bare-metal on-premise terisolasi (air-gapped), DevSecOps, dan DRC.',
+          },
+          {
+            roleId: 'role-tw',
+            roleName: 'Technical Writer & Trainer',
+            tier: 'Senior',
+            headcount: 1,
+            durationMonths: twDuration,
+            taskDescription: 'Penyusunan dokumen teknis rahasia, SOP operasi komando, dan transfer teknologi lintas Lanud.',
+          },
+        ];
+
+    const nonPersonnel: DraftEstimateNonPersonnel[] = isSim
+      ? [
+          {
+            category: 'Server / Cloud',
+            itemName: 'Klaster Workstation GPU Render Node & Server Simulasi Deterministik On-Premise',
+            quantity: duration,
+            unit: 'Bulan',
+            unitPrice: 32000000,
+            notes: 'Komputasi grafis 3D real-time latensi ultra-rendah dan lingkungan air-gapped',
+          },
+          {
+            category: 'Lisensi',
+            itemName: 'Lisensi OEM Physics Engine, Aerodinamika & Flight Dynamics SDK (Impor)',
+            quantity: 2,
+            unit: 'Paket / Tahun',
+            unitPrice: 175000000,
+            notes: 'Komponen IP/lisensi OEM luar negeri untuk pemodelan karakteristik terbang pesawat tempur',
+          },
+          {
+            category: 'Lisensi',
+            itemName: 'Lisensi OEM Visualisasi 3D Kokpit, Image Generator (IG) & Terrain Database Militer',
+            quantity: 2,
+            unit: 'Paket / Tahun',
+            unitPrice: 165000000,
+            notes: 'Lisensi komersial/impor mesin visualisasi multi-kanal dan basis data medan udara',
+          },
+          {
+            category: 'Integrasi API',
+            itemName: 'Gateway Antarmuka Avionik (MIL-STD-1553 / ARINC-429) & Hardware-in-the-Loop (HIL)',
+            quantity: 2,
+            unit: 'Paket',
+            unitPrice: 145000000,
+            notes: 'Adapter integrasi perangkat keras kokpit/instrumen fisik dengan perangkat lunak simulasi',
+          },
+          {
+            category: 'Security Testing',
+            itemName: 'Sertifikasi Kelaikan Simulasi Militer, Audit Kriptografi & Uji Integrasi HIL',
+            quantity: 2,
+            unit: 'Paket',
+            unitPrice: 95000000,
+            notes: 'Verifikasi keselamatan, determinisme waktu-nyata, dan kepatuhan keamanan pertahanan',
+          },
+          {
+            category: 'Dokumentasi',
+            itemName: 'Dokumen Kelaikan Teknis, SOP Instruktur & Program Transfer Teknologi (ToT) Skadron',
+            quantity: 3,
+            unit: 'Kegiatan',
+            unitPrice: 28000000,
+            notes: 'Pelatihan intensif teknisi dan operator agar mandiri melakukan kalibrasi & pemeliharaan',
+          },
+          {
+            category: 'SLA & Pemeliharaan',
+            itemName: 'Dukungan On-Site Specialist & Pemeliharaan Kritis SLA 99.99% (12 Bulan)',
+            quantity: 1,
+            unit: 'Paket / Tahun',
+            unitPrice: 120000000,
+            notes: 'Ketersediaan dukungan teknis khusus pasca serah terima',
+          },
+        ]
+      : [
+          {
+            category: 'Server / Cloud',
+            itemName: 'Klaster Server On-Premise Bare-Metal / GPU Compute Node & Air-Gapped Staging',
+            quantity: duration,
+            unit: 'Bulan',
+            unitPrice: 28000000,
+            notes: 'Infrastruktur komputasi terisolasi berkeandalan tinggi untuk pelatihan AI & simulasi radar',
+          },
+          {
+            category: 'Lisensi',
+            itemName: 'Lisensi Enterprise/OEM Sensor Fusion, Tactical GIS Militer & Modul HSM Kriptografi',
+            quantity: 1,
+            unit: 'Paket / Tahun',
+            unitPrice: 165000000,
+            notes: 'Lisensi perangkat lunak pemetaan militer OEM dan pengamanan kunci kriptografi perangkat keras',
+          },
+          {
+            category: 'Integrasi API',
+            itemName: 'Gateway Protokol Taktis Multi-Radar, Link Enkripsi & Integrasi Lintas Komando',
+            quantity: 2,
+            unit: 'Paket',
+            unitPrice: 45000000,
+            notes: 'Interoperabilitas protokol sensor militer dan replikasi multi-pangkalan',
+          },
+          {
+            category: 'Security Testing',
+            itemName: 'Audit Kriptografi, Red-Teaming & Sertifikasi Kelaikan Siber Independen (BSSN/ITSec)',
+            quantity: 2,
+            unit: 'Paket',
+            unitPrice: 65000000,
+            notes: 'Verifikasi kelaikan pertahanan siber berlapis sebelum operasionalisasi',
+          },
+          {
+            category: 'Dokumentasi',
+            itemName: 'Dokumen KAK/SRS/SDD/SOP Operasi & Workshop Transfer Teknologi Multi-Lanud',
+            quantity: 3,
+            unit: 'Kegiatan',
+            unitPrice: 22000000,
+            notes: 'Pelatihan intensif operator komando, tim Satsiber, dan administrator sistem',
+          },
+          {
+            category: 'SLA & Pemeliharaan',
+            itemName: 'Dukungan On-Site Engineer & Pemeliharaan Kritis 24/7 SLA 99.99% (12 Bulan)',
+            quantity: 1,
+            unit: 'Paket / Tahun',
+            unitPrice: 95000000,
+            notes: 'Respons insiden kritis < 15 menit & pembaruan patch keamanan berkala',
+          },
+        ];
 
     draft = {
       projectName,
-      proposingUnit: 'Satsiber TNI AU, Kohanudnas & Disinfolahtaau',
+      proposingUnit: isSim
+        ? 'Disinfolahtaau, Disdikau & Dinas Kelaikan Terbang TNI AU'
+        : 'Satsiber TNI AU, Kohanudnas & Disinfolahtaau',
       procurementScheme: meta.procurementScheme,
       complexityLevel: meta.complexityLevel,
       tierClassification: 'TIER 4',
       tierLabel: meta.tierLabel,
       complexityScore: meta.complexityScore,
       recommendedOverheadPercent: meta.recommendedOverheadPercent,
+      talentScarcityProfile: domainCtx.talentScarcityProfile,
+      supplyChainProfile: domainCtx.supplyChainProfile,
+      knowledgeTransferIncluded: true,
       durationMonths: duration,
       locationFactor: 1.0,
       highComplexityModules: [...HIGH_COMPLEXITY_MODULE_OPTIONS],
@@ -1306,22 +1700,25 @@ export function generateDeterministicArchitecturalEstimate(
       nonPersonnel,
     };
 
-    rationaleBody =
-      `Rasionalisasi Arsitektur (TIER 4 — Skor ${meta.complexityScore}/100): ` +
-      `Sistem komando strategis/pertahanan siber & C4ISR menuntut arsitektur mission-critical berstandar pertahanan: fusi data multi-radar, deteksi ancaman berbasis AI, enkripsi kriptografi berlapis (TLS 1.3/AES-256/HSM), operasi klaster terisolasi (air-gapped), serta sertifikasi kelaikan siber independen. ` +
-      `Diperlukan tim inti 19 tenaga ahli Senior–Lead selama ${duration} bulan beserta infrastruktur GPU/bare-metal, red-teaming, dan SLA kritis 24/7.`;
+    rationaleBody = isSim
+      ? `• **Penalaran SDM & Kelangkaan Keahlian**: Pengembangan perangkat lunak simulator pesawat tempur membutuhkan **tenaga ahli spesialis sangat langka** (fisika komputasi aerodinamika, arsitektur simulasi real-time deterministik, antarmuka avionik MIL-STD-1553/ARINC-429, serta pengujian kelaikan terbang). Karena kurva belajar domain militer sangat curam dan ketersediaan SDM tersertifikasi terbatas, struktur tim diisi kualifikasi **Senior hingga Lead / Principal** dengan durasi integrasi & pengujian Hardware-in-the-Loop (HIL) yang lebih panjang (${duration} bulan), plus 2 *Technical Writer & Trainer* untuk Transfer Teknologi (ToT) ke teknisi internal.\n` +
+        `• **Penalaran Faktor Impor, Lisensi OEM & Domain Khusus**: Lonjakan biaya pada simulator pesawat tempur **bukan disebabkan oleh sekadar menulis lebih banyak baris kode**, melainkan dipicu oleh struktur rantai pasok komponen impor/OEM khusus: lisensi OEM *Physics/Flight Dynamics SDK*, lisensi OEM *Visualisasi 3D/Image Generator & Terrain Militer*, hak kekayaan intelektual (IP) model pesawat, *gateway* perangkat keras kokpit (HIL), sertifikasi kelaikan militer, serta dukungan *on-site specialist*. (Catatan kepatuhan Perpres 12/2021: seluruh komponen lisensi OEM/impor diwajibkan melampirkan *Principal Quote* / survei harga pasar resmi).`
+      : `• **Penalaran SDM & Kelangkaan Keahlian**: Sistem komando pertahanan siber & C4ISR membutuhkan SDM spesialis langka (arsitek sistem terdistribusi *air-gapped*, rekayasa *sensor fusion* multi-radar, *AI Threat Detection*, dan auditor kriptografi) berkualifikasi **Senior hingga Lead / Principal**. Kurva belajar domain pertahanan dan fase uji integrasi/red-teaming menuntut durasi matang (${duration} bulan) dengan rasio manajerial tetap ramping, disertai alokasi Transfer Teknologi lintas Lanud.\n` +
+        `• **Penalaran Faktor Impor, Lisensi OEM & Domain Khusus**: Berbeda jauh dengan aplikasi portal open-source lokal, struktur biaya dipengaruhi lisensi enterprise/OEM *sensor fusion* & *tactical GIS militer*, modul kriptografi perangkat keras (HSM), *gateway* protokol radar khusus, klaster bare-metal/GPU *air-gapped*, serta sertifikasi kelaikan siber independen (BSSN/ITSec).`;
   }
 
   const { summary } = buildPricedItemsFromDraft(draft, activeConfig);
 
   const sourceTag =
     modeLabel === 'LOCAL_FALLBACK'
-      ? 'MESIN ESTIMATOR ARSITEKTUR LOKAL (OFFLINE FALLBACK)'
-      : 'MESIN ESTIMATOR ARSITEKTUR DETERMINISTIK SERVER';
+      ? 'MESIN ESTIMATOR ARSITEKTUR & DOMAIN LOKAL (OFFLINE FALLBACK)'
+      : 'MESIN ESTIMATOR ARSITEKTUR & DOMAIN DETERMINISTIK SERVER';
 
   const reply = `[${sourceTag}]
 Klasifikasi Arsitektur: **${draft.tierLabel}** (Skor Kompleksitas: ${draft.complexityScore}/100)
 Proyek: **${draft.projectName}**
+Profil SDM: ${draft.talentScarcityProfile}
+Rantai Pasok: ${draft.supplyChainProfile}
 
 ${rationaleBody}
 

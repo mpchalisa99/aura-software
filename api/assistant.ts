@@ -8,6 +8,7 @@ import {
 } from '../src/data/defaultRegulations';
 import { DraftEstimatePayload, RegulationConfigPayload } from '../src/types/aura';
 import {
+  analyzeStrategicDomainContext,
   buildPricedItemsFromDraft,
   classifyArchitecturalTier,
   generateDeterministicArchitecturalEstimate,
@@ -70,7 +71,15 @@ ATURAN WAJIB KODE PERAN & KUALIFIKASI:
 - Gunakan HANYA tier valid berikut: "Junior", "Middle", "Senior", "Lead / Principal".
 - Gunakan HANYA kategori nonPersonnel valid berikut: "Server / Cloud", "Lisensi", "Integrasi API", "Security Testing", "Dokumentasi", "SLA & Pemeliharaan".
 - Durasi setiap baris personel TIDAK BOLEH melebihi durationMonths proyek.
-- Pada field "reply" (Bahasa Indonesia formal teknis), WAJIB jelaskan rasionalisasi arsitektur mengapa biaya tersebut terbentuk (komponen kompleks apa yang dibutuhkan atau sengaja ditiadakan karena tidak relevan dengan skala proyek) serta dasar regulasi aktif. Jangan mengarang tarif di luar tabel regulasi aktif.`;
+- Pada field "reply" (Bahasa Indonesia formal teknis), WAJIB sertakan 2 dimensi penalaran strategis berikut secara eksplisit dan konsisten 100% dengan "draftEstimate":
+  A. PENALARAN KEMAMPUAN & KETERSEDIAAN SDM (TALENT SCARCITY & SKILL DEPTH):
+     * Peran umum/standar (CRUD web/form, UI dasar, QA fungsional): talenta tersedia luas; gunakan tim ramping (Junior–Middle) tanpa membengkakkan OB.
+     * Peran spesialis langka / domain kritis (telemetri real-time, avionik/radar/sensor, simulator pesawat tempur/fisika komputasi, kriptografi militer, optimasi AI kompleks): wajib gunakan kualifikasi Senior hingga Lead / Principal serta durasi integrasi & pengujian lebih panjang karena kurva belajar domain curam dan kelangkaan SDM tersertifikasi.
+     * Jika permintaan menyebutkan keterbatasan SDM internal atau kebutuhan pendampingan/transfer teknologi (knowledge transfer / ToT / bimtek), alokasikan peran "role-tw" (Technical Writer & Trainer) dan paket pelatihan secara proporsional TANPA memaksakan tim engineering raksasa yang tidak efisien.
+  B. PENALARAN FAKTOR IMPOR, LISENSI OEM, PERANGKAT KHUSUS & DOMAIN INDUSTRI:
+     * Bedakan secara tegas antara aplikasi buatan lokal berbasis open-source/standar umum (biaya didominasi jam kerja lokal & hosting standar) dengan sistem yang bergantung pada lisensi OEM luar negeri, SDK/physics/visual engine khusus, integrasi perangkat keras/sensor/avionik (HIL), atau sertifikasi kelaikan militer.
+     * Pada sistem berketergantungan impor/OEM/perangkat khusus (mis. simulator pesawat tempur, C4ISR, radar/avionik), jelaskan EKSPLISIT bahwa lonjakan biaya dipicu komponen impor/lisensi OEM, IP/kustomisasi khusus, standar keselamatan/kelaikan, dan SDM spesialis tersertifikasi — BUKAN sekadar menulis lebih banyak baris kode.
+- ATURAN ANTI-HALUSINASI ANGKA: Jangan mengarang nominal Rupiah acak di dalam "reply" yang bertentangan dengan hasil perhitungan deterministik. Biarkan ringkasan nominal akhir diambil dari tabel regulasi aktif (${DEFAULT_REGULATION_CONFIG.version}).`;
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -132,6 +141,7 @@ export default async function handler(req: Request, res: Response) {
     });
 
     const tierHint = classifyArchitecturalTier(message);
+    const domainHint = analyzeStrategicDomainContext(message);
 
     const compactTariffReference = activeConfig.roleTariffs.map((r) => ({
       roleId: r.id,
@@ -154,6 +164,9 @@ export default async function handler(req: Request, res: Response) {
             tierClassification: { type: Type.STRING },
             complexityScore: { type: Type.INTEGER },
             recommendedOverheadPercent: { type: Type.NUMBER },
+            talentScarcityProfile: { type: Type.STRING },
+            supplyChainProfile: { type: Type.STRING },
+            knowledgeTransferIncluded: { type: Type.BOOLEAN },
             durationMonths: { type: Type.INTEGER },
             locationFactor: { type: Type.NUMBER },
             highComplexityModules: { type: Type.ARRAY, items: { type: Type.STRING } },
@@ -221,7 +234,12 @@ Opsi Checkbox Fitur Resmi (gunakan string persis di bawah bila relevan, atau kos
 - specialIntegrations: ${JSON.stringify(SPECIAL_INTEGRATION_OPTIONS)}
 - layeredSecurityStandards: ${JSON.stringify(LAYERED_SECURITY_STANDARD_OPTIONS)}
 
-Indikasi awal klasifikasi arsitektur sistem: ${tierHint.tier} (${tierHint.tierLabel}). Pastikan estimasi benar-benar proporsional dengan kompleksitas permintaan pengguna dan jelaskan rasionalisasi arsitekturnya pada "reply".`;
+Indikasi awal klasifikasi & konteks domain strategis:
+- Tier Arsitektur: ${tierHint.tier} (${tierHint.tierLabel})
+- Profil Kelangkaan SDM: ${domainHint.talentScarcityProfile}
+- Profil Rantai Pasok / Impor OEM: ${domainHint.supplyChainProfile}
+- Kebutuhan Pendampingan / Transfer Teknologi Internal: ${domainHint.hasSdmConstraintOrToT ? 'YA (wajib sertakan porsi role-tw & kegiatan ToT proporsional tanpa membengkakkan headcount)' : 'Standar sesuai Tier'}
+Pastikan estimasi, komposisi peran, non-personel (termasuk komponen OEM/impor bila relevan), dan narasi "reply" benar-benar selaras serta konsisten dengan tabel regulasi aktif.`;
 
     let activeModelName = 'gemini-2.5-flash';
     let responseText = '';
@@ -282,7 +300,7 @@ Indikasi awal klasifikasi arsitektur sistem: ${tierHint.tier} (${tierHint.tierLa
     const { summary } = buildPricedItemsFromDraft(normalizedDraft, activeConfig);
 
     // Append deterministic locked financial readout so chat text matches calculator 100%
-    const verifiedFooter = `\n\n─── RINGKASAN TERKUNCI DETERMINISTIK (${activeConfig.version}) ───\n• Klasifikasi: ${normalizedDraft.tierLabel} (Skor ${normalizedDraft.complexityScore}/100)\n• Durasi & Tim: ${normalizedDraft.durationMonths} Bulan · ${summary.totalPersonnelHeadcount} Orang (${formatNumberID(summary.totalManMonths, 1)} OB)\n• Biaya Personel: ${formatIDR(summary.totalPersonnelCost)}\n• Biaya Non-Personel: ${formatIDR(summary.totalNonPersonnelCost)}\n• Estimasi Grand Total HPS/RAB (incl. Overhead ${normalizedDraft.recommendedOverheadPercent ?? 10}% & PPN ${activeConfig.defaultPpnPercent}%): ${formatIDR(summary.grandTotalEstimation)}`;
+    const verifiedFooter = `\n\n─── RINGKASAN TERKUNCI DETERMINISTIK (${activeConfig.version}) ───\n• Klasifikasi: ${normalizedDraft.tierLabel} (Skor ${normalizedDraft.complexityScore}/100)\n• Profil SDM & Rantai Pasok: ${normalizedDraft.talentScarcityProfile} | ${normalizedDraft.supplyChainProfile}\n• Durasi & Tim: ${normalizedDraft.durationMonths} Bulan · ${summary.totalPersonnelHeadcount} Orang (${formatNumberID(summary.totalManMonths, 1)} OB)\n• Biaya Personel: ${formatIDR(summary.totalPersonnelCost)}\n• Biaya Non-Personel: ${formatIDR(summary.totalNonPersonnelCost)}\n• Estimasi Grand Total HPS/RAB (incl. Overhead ${normalizedDraft.recommendedOverheadPercent ?? 10}% & PPN ${activeConfig.defaultPpnPercent}%): ${formatIDR(summary.grandTotalEstimation)}`;
 
     return res.status(200).json({
       reply: `${parsed.reply.trim()}${verifiedFooter}`,
